@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { VideoProfile } from '@dbforall/core';
 import { PALETTE_8 } from '@dbforall/core';
-import { decodeVideoFile, encodeFileToVideo, payloadSizeFor } from './pipeline';
+import { decodeVideoFile, encodeFileToVideo, inspectVideo, payloadSizeFor } from './pipeline';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 
@@ -133,4 +133,43 @@ test('decoding with the wrong geometry fails loudly', { skip: !hasFfmpeg && 'ffm
     () => decodeVideoFile(video, { ...PROFILE, cellSize: 16 }),
     /No readable chunk/
   );
+});
+
+test('inspect reports margin on a healthy video', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const video = join(dir, 'inspect.mp4');
+  const encoded = await encodeFileToVideo(randomBytes(9000, 11), video, {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+  });
+
+  const report = await inspectVideo(video, PROFILE);
+  assert.equal(report.framesRead, report.framesReadable);
+  assert.equal(report.dataChunksFound, encoded.chunks);
+  assert.equal(report.parityChunksFound, encoded.parityChunks);
+  assert.deepEqual(report.missing, []);
+  assert.equal(report.recoverable, true);
+});
+
+test('inspect names the chunks that went missing', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const video = join(dir, 'inspect-cut.mp4');
+  const cut = join(dir, 'inspect-cut-trimmed.mp4');
+  await encodeFileToVideo(randomBytes(9000, 12), video, {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+  });
+
+  // Drop enough frames that parity cannot cover the hole.
+  const result = spawnSync('ffmpeg', [
+    '-y', '-loglevel', 'error', '-i', video,
+    '-vf', 'trim=start_frame=14,setpts=PTS-STARTPTS',
+    '-c:v', 'libx264', '-crf', '14', '-g', '1', '-pix_fmt', 'yuv420p', cut,
+  ]);
+  assert.equal(result.status, 0, result.stderr?.toString());
+
+  const report = await inspectVideo(cut, PROFILE);
+  assert.deepEqual(report.missing, [0, 1, 2, 3, 4, 5, 6]);
+  assert.equal(report.recoverable, false);
+  assert.match(report.reason ?? '', /too many lost in one parity group/);
 });

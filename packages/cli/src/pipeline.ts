@@ -148,16 +148,12 @@ export async function encodeFileToVideo(
   };
 }
 
-/**
- * Video -> the original file. Every frame is tried independently and the first
- * valid copy of each chunk wins, so a changed frame rate, a dropped frame or a
- * blended transition costs nothing as long as one clean copy survives.
- */
-export async function decodeVideoFile(
+/** Feed every decoded frame of a video to `onFrame`, streaming, never buffering. */
+async function eachFrame(
   inputPath: string,
   profile: VideoProfile,
-  onProgress?: ProgressCallback
-): Promise<DecodeResult> {
+  onFrame: (frame: Buffer) => void
+): Promise<void> {
   const frameSize = profile.width * profile.height * 3;
   const { proc, done } = ffmpeg([
     '-i', inputPath,
@@ -168,29 +164,8 @@ export async function decodeVideoFile(
     'pipe:1',
   ]);
 
-  const byIndex = new Map<number, EncodedChunk>();
-  let framesRead = 0;
-  let framesRejected = 0;
-
   const pending: Buffer[] = [];
   let pendingBytes = 0;
-
-  const consume = (frame: Buffer) => {
-    framesRead++;
-    try {
-      const chunk = parseChunk(readFrame(frame, profile).bytes);
-      if (!byIndex.has(chunk.header.chunkIndex)) {
-        byIndex.set(chunk.header.chunkIndex, chunk);
-        onProgress?.({
-          phase: 'decode',
-          completed: byIndex.size,
-          total: chunk.header.totalChunks,
-        });
-      }
-    } catch {
-      framesRejected++;
-    }
-  };
 
   for await (const piece of proc.stdout) {
     pending.push(piece as Buffer);
@@ -200,13 +175,42 @@ export async function decodeVideoFile(
     let joined = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes);
     pending.length = 0;
     while (joined.length >= frameSize) {
-      consume(joined.subarray(0, frameSize));
+      onFrame(joined.subarray(0, frameSize));
       joined = joined.subarray(frameSize);
     }
     pending.push(joined);
     pendingBytes = joined.length;
   }
   await done;
+}
+
+/**
+ * Video -> the original file. Every frame is tried independently and the first
+ * valid copy of each chunk wins, so a changed frame rate, a dropped frame or a
+ * blended transition costs nothing as long as one clean copy survives. Chunks
+ * that no frame carried are rebuilt from parity.
+ */
+export async function decodeVideoFile(
+  inputPath: string,
+  profile: VideoProfile,
+  onProgress?: ProgressCallback
+): Promise<DecodeResult> {
+  const byIndex = new Map<number, EncodedChunk>();
+  let framesRead = 0;
+  let framesRejected = 0;
+
+  await eachFrame(inputPath, profile, (frame) => {
+    framesRead++;
+    try {
+      const chunk = parseChunk(readFrame(frame, profile).bytes);
+      if (!byIndex.has(chunk.header.chunkIndex)) {
+        byIndex.set(chunk.header.chunkIndex, chunk);
+        onProgress?.({ phase: 'decode', completed: byIndex.size, total: chunk.header.totalChunks });
+      }
+    } catch {
+      framesRejected++;
+    }
+  });
 
   if (byIndex.size === 0) {
     throw new Error(`No readable chunk in ${framesRead} frames. Wrong platform profile?`);
@@ -219,5 +223,85 @@ export async function decodeVideoFile(
     recovered,
     framesRead,
     framesRejected,
+  };
+}
+
+export interface InspectResult {
+  framesRead: number;
+  framesReadable: number;
+  /** Hamming repairs per readable frame. A high average means cells are too small. */
+  correctionsAverage: number;
+  correctionsMax: number;
+  dataChunksFound: number;
+  parityChunksFound: number;
+  totalChunks: number;
+  missing: number[];
+  /** Whether what survived is enough to rebuild the file. */
+  recoverable: boolean;
+  /** Why not, when it is not. */
+  reason?: string;
+}
+
+/**
+ * Read a video without reassembling anything, and report how close to the edge
+ * it is. Run this when a real upload comes back and the decode fails: the
+ * correction counts say whether the cells were too small for that platform,
+ * and the missing list says whether frames went missing instead.
+ */
+export async function inspectVideo(inputPath: string, profile: VideoProfile): Promise<InspectResult> {
+  const chunks: EncodedChunk[] = [];
+  const seen = new Set<number>();
+  let framesRead = 0;
+  let framesReadable = 0;
+  let correctionsTotal = 0;
+  let correctionsMax = 0;
+
+  await eachFrame(inputPath, profile, (frame) => {
+    framesRead++;
+    try {
+      const { bytes, corrections } = readFrame(frame, profile);
+      const chunk = parseChunk(bytes);
+      framesReadable++;
+      correctionsTotal += corrections;
+      correctionsMax = Math.max(correctionsMax, corrections);
+      if (!seen.has(chunk.header.chunkIndex)) {
+        seen.add(chunk.header.chunkIndex);
+        chunks.push(chunk);
+      }
+    } catch {
+      /* unreadable frame, counted by difference */
+    }
+  });
+
+  const dataChunks = chunks.filter((c) => c.header.kind === 'data');
+  const totalChunks = chunks[0]?.header.totalChunks ?? 0;
+  const missing: number[] = [];
+  const present = new Set(dataChunks.map((c) => c.header.chunkIndex));
+  for (let i = 0; i < totalChunks; i++) if (!present.has(i)) missing.push(i);
+
+  let recoverable = chunks.length > 0;
+  let reason: string | undefined;
+  if (recoverable) {
+    try {
+      recoverDataChunks(chunks);
+    } catch (err) {
+      recoverable = false;
+      reason = (err as Error).message;
+    }
+  } else {
+    reason = `No readable chunk in ${framesRead} frames`;
+  }
+
+  return {
+    framesRead,
+    framesReadable,
+    correctionsAverage: framesReadable > 0 ? correctionsTotal / framesReadable : 0,
+    correctionsMax,
+    dataChunksFound: dataChunks.length,
+    parityChunksFound: chunks.length - dataChunks.length,
+    totalChunks,
+    missing,
+    recoverable,
+    ...(reason ? { reason } : {}),
   };
 }
