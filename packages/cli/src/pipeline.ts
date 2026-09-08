@@ -3,14 +3,18 @@ import { Writable } from 'node:stream';
 import {
   ChunkHeader,
   EncodedChunk,
+  DEFAULT_PARITY,
+  ParityOptions,
   ProgressCallback,
   VideoProfile,
   assembleFile,
+  buildParityChunks,
   chunkFile,
   frameGeometry,
   headerSize,
   parseChunk,
   readFrame,
+  recoverDataChunks,
   renderFrame,
   serializeChunk,
 } from '@dbforall/core';
@@ -21,12 +25,15 @@ export interface EncodeOptions {
   profile: VideoProfile;
   /** x264 quality. Lower is better; the platform will re-encode anyway. */
   crf?: number;
+  /** Erasure coding across chunks. Pass false to ship data chunks only. */
+  parity?: ParityOptions | false;
   onProgress?: ProgressCallback;
 }
 
 export interface EncodeResult {
   outputPath: string;
   chunks: number;
+  parityChunks: number;
   frames: number;
   payloadBytes: number;
 }
@@ -34,18 +41,29 @@ export interface EncodeResult {
 export interface DecodeResult {
   data: Uint8Array;
   header: ChunkHeader;
+  /** Chunk indices rebuilt from parity because no frame carried them. */
+  recovered: number[];
   framesRead: number;
   /** Frames that carried no readable chunk: transitions, blends, dropped frames. */
   framesRejected: number;
 }
 
-/** Payload bytes each chunk may carry once its own header is in the frame. */
-export function payloadSizeFor(profile: VideoProfile, fileName: string, mimeType: string): number {
+/**
+ * Payload bytes each chunk may carry once its own header is in the frame.
+ * Sized for the widest header, the one on a parity chunk: it lists every data
+ * chunk it protects, and every chunk has to fit the same frame.
+ */
+export function payloadSizeFor(
+  profile: VideoProfile,
+  fileName: string,
+  mimeType: string,
+  dataPerGroup: number = DEFAULT_PARITY.dataPerGroup
+): number {
   const capacity = frameGeometry(profile).capacityBytes;
-  const overhead = headerSize({ fileName, mimeType, parityMembers: undefined });
+  const overhead = headerSize({ fileName, mimeType, parityMembers: new Array(dataPerGroup).fill(0) });
   const payloadSize = capacity - overhead;
   if (payloadSize <= 0) {
-    throw new Error(`Frame holds ${capacity} B, the chunk header alone needs ${overhead} B`);
+    throw new Error(`Frame holds ${capacity} B, the widest chunk header needs ${overhead} B`);
   }
   return payloadSize;
 }
@@ -80,9 +98,12 @@ export async function encodeFileToVideo(
   outputPath: string,
   options: EncodeOptions
 ): Promise<EncodeResult> {
-  const { fileName, mimeType, profile, crf = 14, onProgress } = options;
-  const payloadSize = payloadSizeFor(profile, fileName, mimeType);
-  const chunks = await chunkFile(data, { fileName, mimeType, payloadSize });
+  const { fileName, mimeType, profile, crf = 14, parity = {}, onProgress } = options;
+  const dataPerGroup = (parity === false ? undefined : parity.dataPerGroup) ?? DEFAULT_PARITY.dataPerGroup;
+  const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
+  const dataChunks = await chunkFile(data, { fileName, mimeType, payloadSize });
+  const parityChunks = parity === false ? [] : buildParityChunks(dataChunks, parity);
+  const chunks = [...dataChunks, ...parityChunks];
 
   const { proc, done } = ffmpeg([
     '-y',
@@ -118,7 +139,13 @@ export async function encodeFileToVideo(
   }
   await done;
 
-  return { outputPath, chunks: chunks.length, frames, payloadBytes: data.length };
+  return {
+    outputPath,
+    chunks: dataChunks.length,
+    parityChunks: parityChunks.length,
+    frames,
+    payloadBytes: data.length,
+  };
 }
 
 /**
@@ -185,10 +212,11 @@ export async function decodeVideoFile(
     throw new Error(`No readable chunk in ${framesRead} frames. Wrong platform profile?`);
   }
 
-  const chunks = [...byIndex.values()].sort((a, b) => a.header.chunkIndex - b.header.chunkIndex);
+  const { chunks, recovered } = recoverDataChunks([...byIndex.values()]);
   return {
     data: await assembleFile(chunks),
     header: chunks[0].header,
+    recovered,
     framesRead,
     framesRejected,
   };

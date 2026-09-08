@@ -77,9 +77,10 @@ async function main(argv: string[]): Promise<void> {
     await writeFile(target, result.data);
 
     process.stderr.write('\r');
+    const rebuilt = result.recovered.length > 0 ? `, ${result.recovered.length} chunks rebuilt from parity` : '';
     console.log(
       `${target}: ${result.data.length} B recovered from ${result.framesRead} frames ` +
-        `(${result.framesRejected} unreadable)`
+        `(${result.framesRejected} unreadable${rebuilt})`
     );
     return;
   }

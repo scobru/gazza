@@ -2,10 +2,11 @@ import { crc32 } from './crc32';
 import { ChunkHeader, ChunkKind, EncodedChunk } from './types';
 
 export const CHUNK_MAGIC = 0x44424641; // "DBFA"
-export const CHUNK_VERSION = 1;
+export const CHUNK_VERSION = 2;
 
-/** Sentinel written when a chunk belongs to no parity group. */
+/** Sentinels written when a chunk takes no part in a parity group. */
 const NO_PARITY_GROUP = 0xffffffff;
+const NO_PARITY_INDEX = 0xffff;
 
 const KIND_TO_CODE: Record<ChunkKind, number> = { data: 0, parity: 1, cover: 2 };
 const CODE_TO_KIND: ChunkKind[] = ['data', 'parity', 'cover'];
@@ -16,15 +17,15 @@ const CODE_TO_KIND: ChunkKind[] = ['data', 'parity', 'cover'];
  *   0  4  magic                     28  4  parityGroupId (0xffffffff = none)
  *   4  1  version                   32  8  fileSize
  *   5  1  kind                      40 32  fileSha256 (raw)
- *   6  2  fileName byte length      72  .. fileName, mimeType, parityMembers
- *   8  2  mimeType byte length      ..  4  headerCrc (crc32 of everything above)
- *  10  2  parityMembers count
+ *   6  2  fileName byte length      72  2  parityIndex (0xffff = none)
+ *   8  2  mimeType byte length      74  .. fileName, mimeType, parityMembers
+ *  10  2  parityMembers count       ..  4  headerCrc (crc32 of everything above)
  *  12  4  chunkIndex
  *  16  4  totalChunks
  *  20  4  payloadLength
  *  24  4  chunkCrc (crc32 of the payload)
  */
-const FIXED_SIZE = 72;
+const FIXED_SIZE = 74;
 const HEADER_CRC_SIZE = 4;
 
 const utf8 = new TextEncoder();
@@ -90,6 +91,7 @@ export function serializeChunk(chunk: EncodedChunk): Uint8Array {
   view.setUint32(28, header.parityGroupId ?? NO_PARITY_GROUP);
   view.setBigUint64(32, BigInt(header.fileSize));
   out.set(sha, 40);
+  view.setUint16(72, header.parityIndex ?? NO_PARITY_INDEX);
 
   let off = FIXED_SIZE;
   out.set(name, off);
@@ -151,6 +153,7 @@ export function parseChunk(bytes: Uint8Array): EncodedChunk {
   }
 
   const parityGroupId = view.getUint32(28);
+  const parityIndex = view.getUint16(72);
 
   const header: ChunkHeader = {
     magic: CHUNK_MAGIC,
@@ -167,6 +170,7 @@ export function parseChunk(bytes: Uint8Array): EncodedChunk {
   };
   if (parityGroupId !== NO_PARITY_GROUP) header.parityGroupId = parityGroupId;
   if (parityMembers.length > 0) header.parityMembers = parityMembers;
+  if (parityIndex !== NO_PARITY_INDEX) header.parityIndex = parityIndex;
 
   return { header, payload };
 }

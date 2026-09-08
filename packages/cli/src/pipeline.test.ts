@@ -52,7 +52,7 @@ test('payload size leaves room for the chunk header', () => {
 test('a frame too small for a header is refused with a clear message', () => {
   assert.throws(
     () => payloadSizeFor({ ...PROFILE, width: 96, height: 96, cellSize: 8 }, 'x.bin', 'application/octet-stream'),
-    /chunk header alone needs/
+    /widest chunk header needs/
   );
 });
 
@@ -65,7 +65,8 @@ test('round trip through a real mp4', { skip: !hasFfmpeg && 'ffmpeg not installe
     mimeType: 'application/octet-stream',
     profile: PROFILE,
   });
-  assert.equal(encoded.frames, encoded.chunks * PROFILE.repeatFrames);
+  assert.ok(encoded.parityChunks > 0, 'parity should be on by default');
+  assert.equal(encoded.frames, (encoded.chunks + encoded.parityChunks) * PROFILE.repeatFrames);
 
   const decoded = await decodeVideoFile(video, PROFILE);
   assert.deepEqual(decoded.data, data);
@@ -93,6 +94,30 @@ test('round trip survives a VP9 transcode at a fraction of the bitrate', { skip:
   assert.equal(result.status, 0, result.stderr?.toString());
 
   const decoded = await decodeVideoFile(transcoded, PROFILE);
+  assert.deepEqual(decoded.data, data);
+});
+
+test('parity rebuilds chunks whose frames were cut out of the video', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const data = randomBytes(20000, 7);
+  const video = join(dir, 'cut-source.mp4');
+  const cut = join(dir, 'cut.mp4');
+
+  await encodeFileToVideo(data, video, {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+  });
+
+  // Cut the first six frames off: three chunks vanish, both copies with them.
+  const result = spawnSync('ffmpeg', [
+    '-y', '-loglevel', 'error', '-i', video,
+    '-vf', 'trim=start_frame=6,setpts=PTS-STARTPTS',
+    '-c:v', 'libx264', '-crf', '14', '-g', '1', '-pix_fmt', 'yuv420p', cut,
+  ]);
+  assert.equal(result.status, 0, result.stderr?.toString());
+
+  const decoded = await decodeVideoFile(cut, PROFILE);
+  assert.ok(decoded.recovered.length > 0, 'expected parity to have rebuilt something');
   assert.deepEqual(decoded.data, data);
 });
 

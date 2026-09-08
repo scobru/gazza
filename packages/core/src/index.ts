@@ -6,3 +6,4 @@ export * from './fec/reedsolomon';
 export * from './palette/colors';
 export * from './video/frame';
 export * from './video/profiles';
+export * from './fec/groups';

@@ -18,7 +18,10 @@ export interface ChunkHeader {
   payloadLength: number;
   chunkCrc: number;
   parityGroupId?: number;
+  /** Data chunk indices this parity group protects. Parity chunks only. */
   parityMembers?: number[];
+  /** Position of this parity chunk within its group, i.e. its Reed-Solomon row. */
+  parityIndex?: number;
 }
 
 export interface EncodedChunk {
