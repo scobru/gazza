@@ -5,3 +5,4 @@ export * from './fec/hamming';
 export * from './fec/reedsolomon';
 export * from './palette/colors';
 export * from './video/frame';
+export * from './video/profiles';
