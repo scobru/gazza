@@ -1,0 +1,25 @@
+{
+  "name": "dbforall",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Universal optical video carrier storage for Instagram and YouTube",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "web:dev": "npm run dev --workspace=@dbforall/web",
+    "cli": "node packages/cli/dist/index.js"
+  },
+  "keywords": [
+    "steganography",
+    "video-storage",
+    "instagram",
+    "youtube",
+    "fec",
+    "reed-solomon"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}
