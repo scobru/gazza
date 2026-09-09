@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@dbforall/core';
-import { decodeVideoFile, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
+import { decodeVideos, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
 
 const MIME_BY_EXT: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -19,9 +19,13 @@ const MIME_BY_EXT: Record<string, string> = {
 
 const USAGE = `dbforall - store files inside video
 
-  dbforall encode  <file> <out.mp4>       [--platform youtube|instagram] [--crf 14] [--encrypt]
-  dbforall decode  <video|url> [out-file] [--platform ...] [--crop auto|w:h:x:y]
+  dbforall encode  <file> <out.mp4>       [--platform ...] [--encrypt] [--split 60]
+  dbforall decode  <video|url>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
   dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
+
+--split <seconds> cuts the carrier into several videos of at most that length,
+named carrier-001.mp4, carrier-002.mp4 and so on. Pass them all back to decode
+in any order: no manifest is needed, the chunks identify themselves.
 
 --encrypt seals the file with AES-256-GCM before it becomes chunks, hiding the
 contents, the file name and the type. The password is asked for on the
@@ -133,22 +137,39 @@ function download(
   });
 }
 
-/** Run `body` on a local path, fetching the URL into a temp directory first. */
-async function withVideo<T>(
-  source: string,
+/** Run `body` on local paths, fetching any URLs into a temp directory first. */
+async function withVideos<T>(
+  sources: string[],
   browser: string | undefined,
   format: string | undefined,
-  body: (path: string) => Promise<T>
+  body: (paths: string[]) => Promise<T>
 ): Promise<T> {
-  if (!isUrl(source)) return body(source);
+  if (!sources.some(isUrl)) return body(sources);
 
   const directory = await mkdtemp(join(tmpdir(), 'dbforall-'));
   try {
-    return await body(await download(source, directory, browser, format));
+    const paths: string[] = [];
+    for (const [i, source] of sources.entries()) {
+      if (!isUrl(source)) {
+        paths.push(source);
+        continue;
+      }
+      const into = join(directory, String(i));
+      await mkdir(into, { recursive: true });
+      paths.push(await download(source, into, browser, format));
+    }
+    return await body(paths);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }
+
+const withVideo = <T,>(
+  source: string,
+  browser: string | undefined,
+  format: string | undefined,
+  body: (path: string) => Promise<T>
+): Promise<T> => withVideos([source], browser, format, (paths) => body(paths[0]));
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -190,17 +211,22 @@ async function main(argv: string[]): Promise<void> {
     console.log(
       `${result.payloadBytes} B -> ${result.chunks} chunks of ` +
         `${payloadSizeFor(profile, fileName, mimeType)} B + ${result.parityChunks} parity -> ` +
-        `${result.frames} frames (${(result.frames / profile.fps).toFixed(1)} s) -> ${result.outputPath}`
+        `${result.frames} frames (${(result.frames / profile.fps).toFixed(1)} s)`
     );
+    for (const part of result.parts) console.log(`  ${part}`);
     return;
   }
 
   if (command === 'decode') {
-    const [input, output] = args;
-    if (!input) throw new Error(USAGE);
+    // With --out every positional is an input; without it the old shape holds,
+    // one input and an optional output.
+    const explicitOut = flag(rest, 'out');
+    const inputs = explicitOut ? args : args.slice(0, 1);
+    const output = explicitOut ?? args[1];
+    if (inputs.length === 0) throw new Error(USAGE);
 
-    const result = await withVideo(input, browser, stream, (path) =>
-      decodeVideoFile(path, profile, {
+    const result = await withVideos(inputs, browser, stream, (paths) =>
+      decodeVideos(paths, profile, {
         crop: flag(rest, 'crop'),
         onProgress: ({ completed, total }) =>
           process.stderr.write(`\rrecovered chunk ${completed}/${total}`),

@@ -114,6 +114,25 @@ dbforall decode  <video|url> [out-file] [--platform youtube|instagram]
 dbforall inspect <video|url>            [--platform youtube|instagram]
 ```
 
+## Splitting
+
+At roughly 17 KB per second of video, a large file makes an unwieldy one.
+`--split <seconds>` cuts the carrier into `carrier-001.mp4`, `carrier-002.mp4`
+and so on, and Instagram's 90 second cap splits automatically.
+
+No manifest is written and none is needed. Every chunk header already carries
+the file hash, its own index and the total, so the parts identify themselves:
+hand them back in any order, duplicated or not, and they reassemble.
+
+```bash
+dbforall encode archive.zip carrier.mp4 --split 60
+dbforall decode https://youtu.be/AAA https://youtu.be/BBB --out archive.zip
+```
+
+Chunks from a different file are rejected on sight rather than quietly ignored:
+they share the same indices, so treating them as duplicates would decode the
+wrong file without a word.
+
 ## Encryption
 
 `--encrypt` seals the file with AES-256-GCM before it becomes chunks. The

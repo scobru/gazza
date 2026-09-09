@@ -6,7 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INSTAGRAM_PROFILE, VideoProfile, YOUTUBE_PROFILE } from '@dbforall/core';
 import { PALETTE_8 } from '@dbforall/core';
-import { decodeVideoFile, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
+import {
+  decodeVideoFile,
+  decodeVideos,
+  encodeFileToVideo,
+  inspectVideo,
+  maxPayloadFor,
+  payloadSizeFor,
+} from './pipeline';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 
@@ -207,5 +214,60 @@ test('an oversized file is refused before ffmpeg is ever started', async () => {
         profile: tiny,
       }),
     /holds \d+ B: 2 s at 30 fps/
+  );
+});
+
+test('a split carrier reassembles from its parts', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const data = randomBytes(30000, 41);
+  const encoded = await encodeFileToVideo(data, join(dir, 'split.mp4'), {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+    splitSeconds: 1,
+  });
+
+  assert.ok(encoded.parts.length > 2, `expected several parts, got ${encoded.parts.length}`);
+  assert.match(encoded.parts[0], /split-001\.mp4$/);
+
+  // Order must not matter: nothing but the chunk headers says where a part sat.
+  const shuffled = [...encoded.parts].reverse();
+  const decoded = await decodeVideos(shuffled, PROFILE);
+  assert.deepEqual(decoded.data, data);
+  assert.equal(decoded.header.fileName, 'payload.bin');
+});
+
+test('one carrier still writes one file under its own name', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const encoded = await encodeFileToVideo(randomBytes(3000, 42), join(dir, 'single.mp4'), {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+  });
+  assert.deepEqual(encoded.parts, [join(dir, 'single.mp4')]);
+});
+
+test('a missing part is reported, not silently truncated', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const encoded = await encodeFileToVideo(randomBytes(30000, 43), join(dir, 'gap.mp4'), {
+    fileName: 'payload.bin',
+    mimeType: 'application/octet-stream',
+    profile: PROFILE,
+    splitSeconds: 1,
+  });
+
+  // Drop a whole middle part: far more than the parity in those groups covers.
+  const withHole = encoded.parts.filter((_, i) => i !== 1);
+  await assert.rejects(() => decodeVideos(withHole, PROFILE), /Cannot rebuild chunks/);
+});
+
+test('parts of different files are refused', { skip: !hasFfmpeg && 'ffmpeg not installed' }, async () => {
+  const a = await encodeFileToVideo(randomBytes(4000, 44), join(dir, 'a.mp4'), {
+    fileName: 'a.bin', mimeType: 'application/octet-stream', profile: PROFILE,
+  });
+  const b = await encodeFileToVideo(randomBytes(4000, 45), join(dir, 'b.mp4'), {
+    fileName: 'b.bin', mimeType: 'application/octet-stream', profile: PROFILE,
+  });
+
+  await assert.rejects(
+    () => decodeVideos([a.parts[0], b.parts[0]], PROFILE),
+    /carry different files/
   );
 });

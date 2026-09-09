@@ -27,10 +27,14 @@ export interface EncodeOptions {
   crf?: number;
   /** Erasure coding across chunks. Pass false to ship data chunks only. */
   parity?: ParityOptions | false;
+  /** Cut the carrier into videos of at most this many seconds each. */
+  splitSeconds?: number;
   onProgress?: ProgressCallback;
 }
 
 export interface EncodeResult {
+  /** Every video written, in order. One entry unless the carrier was split. */
+  parts: string[];
   outputPath: string;
   chunks: number;
   parityChunks: number;
@@ -124,28 +128,22 @@ function ffmpeg(args: string[]) {
   return { proc, done, stderr: () => stderr };
 }
 
-/** File bytes -> a video carrying one chunk per frame, repeated for redundancy. */
-export async function encodeFileToVideo(
-  data: Uint8Array,
+/** Name part n of a split carrier: carrier.mp4 -> carrier-001.mp4 */
+function partPath(outputPath: string, index: number): string {
+  const dot = outputPath.lastIndexOf('.');
+  const stem = dot > 0 ? outputPath.slice(0, dot) : outputPath;
+  const extension = dot > 0 ? outputPath.slice(dot) : '';
+  return `${stem}-${String(index + 1).padStart(3, '0')}${extension}`;
+}
+
+/** Render one run of chunks into one video. */
+async function writeVideo(
+  chunks: EncodedChunk[],
   outputPath: string,
-  options: EncodeOptions
-): Promise<EncodeResult> {
-  const { fileName, mimeType, profile, crf = 14, parity = {}, onProgress } = options;
-  const dataPerGroup = (parity === false ? undefined : parity.dataPerGroup) ?? DEFAULT_PARITY.dataPerGroup;
-  const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
-
-  // Fail before spending minutes in x264 on a video the platform will refuse.
-  const limit = maxPayloadFor(profile, fileName, mimeType, parity);
-  if (limit !== undefined && data.length > limit) {
-    throw new Error(
-      `File is ${data.length} B but the ${profile.platform} profile holds ${limit} B: ` +
-        `${profile.maxDurationSeconds} s at ${profile.fps} fps. Split the file or use another platform.`
-    );
-  }
-  const dataChunks = await chunkFile(data, { fileName, mimeType, payloadSize });
-  const parityChunks = parity === false ? [] : buildParityChunks(dataChunks, parity);
-  const chunks = [...dataChunks, ...parityChunks];
-
+  profile: VideoProfile,
+  crf: number,
+  onFrame: () => void
+): Promise<void> {
   const { proc, done } = ffmpeg([
     '-y',
     '-f', 'rawvideo',
@@ -163,15 +161,13 @@ export async function encodeFileToVideo(
   ]);
   proc.stdout.resume();
 
-  let frames = 0;
   try {
-    for (let i = 0; i < chunks.length; i++) {
-      const pixels = renderFrame(serializeChunk(chunks[i]), profile);
+    for (const chunk of chunks) {
+      const pixels = renderFrame(serializeChunk(chunk), profile);
       for (let r = 0; r < profile.repeatFrames; r++) {
         await write(proc.stdin, pixels);
-        frames++;
+        onFrame();
       }
-      onProgress?.({ phase: 'encode', completed: i + 1, total: chunks.length });
     }
     proc.stdin.end();
   } catch (err) {
@@ -179,9 +175,63 @@ export async function encodeFileToVideo(
     throw err;
   }
   await done;
+}
+
+/**
+ * File bytes -> one or more videos carrying one chunk per frame, repeated for
+ * redundancy. Splitting needs no manifest: every chunk header already carries
+ * the file hash, its own index and the total, so the parts identify themselves
+ * and decoding merges them in any order.
+ */
+export async function encodeFileToVideo(
+  data: Uint8Array,
+  outputPath: string,
+  options: EncodeOptions
+): Promise<EncodeResult> {
+  const { fileName, mimeType, profile, crf = 14, parity = {}, splitSeconds, onProgress } = options;
+  const dataPerGroup = (parity === false ? undefined : parity.dataPerGroup) ?? DEFAULT_PARITY.dataPerGroup;
+  const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
+
+  const cap = splitSeconds === undefined ? maxPayloadFor(profile, fileName, mimeType, parity) : undefined;
+  if (cap !== undefined && data.length > cap) {
+    throw new Error(
+      `File is ${data.length} B but the ${profile.platform} profile holds ${cap} B: ` +
+        `${profile.maxDurationSeconds} s at ${profile.fps} fps. Use --split to spread it over several videos.`
+    );
+  }
+
+  const dataChunks = await chunkFile(data, { fileName, mimeType, payloadSize });
+  const parityChunks = parity === false ? [] : buildParityChunks(dataChunks, parity);
+  const chunks = [...dataChunks, ...parityChunks];
+
+  const limitSeconds = splitSeconds ?? profile.maxDurationSeconds;
+  const perPart =
+    limitSeconds === undefined
+      ? chunks.length
+      : Math.max(1, Math.floor((limitSeconds * profile.fps) / profile.repeatFrames));
+
+  const parts: string[] = [];
+  const total = Math.max(1, Math.ceil(chunks.length / perPart));
+  let frames = 0;
+
+  for (let i = 0; i < total; i++) {
+    const path = total === 1 ? outputPath : partPath(outputPath, i);
+    await writeVideo(
+      chunks.slice(i * perPart, (i + 1) * perPart),
+      path,
+      profile,
+      crf,
+      () => {
+        frames++;
+        onProgress?.({ phase: 'encode', completed: frames, total: chunks.length * profile.repeatFrames });
+      }
+    );
+    parts.push(path);
+  }
 
   return {
-    outputPath,
+    parts,
+    outputPath: parts[0],
     chunks: dataChunks.length,
     parityChunks: parityChunks.length,
     frames,
@@ -335,31 +385,64 @@ export async function decodeVideoFile(
   profile: VideoProfile,
   options: ReadOptions = {}
 ): Promise<DecodeResult> {
+  return decodeVideos([inputPath], profile, options);
+}
+
+/**
+ * Several videos -> one file. A split carrier needs no manifest to reassemble:
+ * every chunk header carries the file hash, its own index and the total, so the
+ * parts can arrive in any order and duplicates cost nothing.
+ */
+export async function decodeVideos(
+  inputPaths: string[],
+  profile: VideoProfile,
+  options: ReadOptions = {}
+): Promise<DecodeResult> {
+  if (inputPaths.length === 0) throw new Error('No video to decode');
   const { onProgress } = options;
-  const crop = options.crop === 'auto' ? await detectCrop(inputPath) : options.crop;
+
   const byIndex = new Map<number, EncodedChunk>();
   let dataSeen = 0;
   let framesRead = 0;
   let framesRejected = 0;
+  // Chunks of two different files share the same indices, so a foreign chunk
+  // would be dropped as a duplicate and the wrong file would decode cleanly.
+  // Catch it on the way in, by hash, not by counting hashes afterwards.
+  let expectedHash: string | undefined;
+  let foreign = 0;
 
-  await eachFrame(inputPath, profile, crop, (frame) => {
-    framesRead++;
-    try {
-      const chunk = parseChunk(readFrame(frame, profile).bytes);
-      if (!byIndex.has(chunk.header.chunkIndex)) {
-        byIndex.set(chunk.header.chunkIndex, chunk);
-        if (chunk.header.kind === 'data') dataSeen++;
-        // Parity chunks are not part of the file, so counting them here would
-        // report more chunks recovered than the file has.
-        onProgress?.({ phase: 'decode', completed: dataSeen, total: chunk.header.totalChunks });
+  for (const inputPath of inputPaths) {
+    const crop = options.crop === 'auto' ? await detectCrop(inputPath) : options.crop;
+    await eachFrame(inputPath, profile, crop, (frame) => {
+      framesRead++;
+      try {
+        const chunk = parseChunk(readFrame(frame, profile).bytes);
+        expectedHash ??= chunk.header.fileSha256;
+        if (chunk.header.fileSha256 !== expectedHash) {
+          foreign++;
+          return;
+        }
+        if (!byIndex.has(chunk.header.chunkIndex)) {
+          byIndex.set(chunk.header.chunkIndex, chunk);
+          if (chunk.header.kind === 'data') dataSeen++;
+          // Parity chunks are not part of the file, so counting them here would
+          // report more chunks recovered than the file has.
+          onProgress?.({ phase: 'decode', completed: dataSeen, total: chunk.header.totalChunks });
+        }
+      } catch {
+        framesRejected++;
       }
-    } catch {
-      framesRejected++;
-    }
-  });
+    });
+  }
 
   if (byIndex.size === 0) {
     throw new Error(`No readable chunk in ${framesRead} frames. Wrong platform profile?`);
+  }
+
+  if (foreign > 0) {
+    throw new Error(
+      `These videos carry different files: ${foreign} chunks belong to another one`
+    );
   }
 
   const { chunks, recovered } = recoverDataChunks([...byIndex.values()]);
