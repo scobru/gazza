@@ -155,8 +155,7 @@ async function main(argv: string[]): Promise<void> {
       decodeVideoFile(path, profile, {
         crop: flag(rest, 'crop'),
         onProgress: ({ completed, total }) =>
-          process.stderr.write(`
-recovered chunk ${completed}/${total}`),
+          process.stderr.write(`\rrecovered chunk ${completed}/${total}`),
       })
     );
 
