@@ -240,6 +240,42 @@ not as a document. A document is transported untouched, which sounds better and
 is not: nothing re-encodes it, so nothing about it is tested, and WhatsApp
 enforces tight size limits on video anyway. Use `--split` there.
 
+## Running it as a container
+
+`ffmpeg`, `ffprobe` and `yt-dlp` are all in the image, so nothing has to be
+installed on the host.
+
+```bash
+docker compose up -d --build    # http://127.0.0.1:4321
+```
+
+For [CapRover](https://caprover.com), the `captain-definition` in the root points
+at the same Dockerfile:
+
+```bash
+caprover deploy
+```
+
+**Read this before exposing it.** The server binds loopback unless `HOST` says
+otherwise, and the compose file publishes it on `127.0.0.1` only. That is
+deliberate: whoever reaches gazza can spend your CPU on ffmpeg and read whatever
+they decode through her. Put authentication in front - CapRover's basic auth is
+enough - before letting anyone else near it. She will say so in her own logs if
+you bind beyond loopback.
+
+Carriers live in `/tmp` and are deleted once collected, so there is no volume to
+mount and nothing to back up. Compose mounts that as a 2 GB tmpfs: a 400 KB file
+becomes 78 MB of mp4 that exists only until it is downloaded, and that is better
+kept out of the disk.
+
+## Why not serverless
+
+Vercel and friends cannot host this. The request and response bodies are capped
+around 4.5 MB while gazza moves tens of megabytes per operation; a 400 KB file
+takes about 40 seconds of x264, against a 60 second function limit; and ffmpeg,
+ffprobe and yt-dlp are not there to begin with. A container is the right shape
+for it.
+
 ## Requirements
 
 `ffmpeg` on PATH for everything, `yt-dlp` on PATH to read from a URL.

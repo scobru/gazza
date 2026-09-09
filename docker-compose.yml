@@ -1,0 +1,18 @@
+services:
+  gazza:
+    build: .
+    image: gazza
+    restart: unless-stopped
+    ports:
+      # Bound to loopback on the host: put a reverse proxy with authentication
+      # in front before opening this to a network. Anyone who reaches it can
+      # spend your CPU on ffmpeg and read whatever it decodes.
+      - "127.0.0.1:4321:4321"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4321
+    tmpfs:
+      # Carriers are large and short-lived: a 400 KB file becomes 78 MB of mp4
+      # that exists only until it is downloaded. Keeping that in RAM avoids
+      # writing tens of megabytes to disk for every encode.
+      - /tmp:size=2g

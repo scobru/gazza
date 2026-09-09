@@ -248,6 +248,42 @@ documento. Un documento viaggia intatto, il che sembra meglio e non lo è: nient
 lo ricomprime, quindi niente di quel carrier viene messo alla prova, e WhatsApp
 impone comunque limiti stretti sui video. Lì usa `--split`.
 
+## Farla girare in un container
+
+`ffmpeg`, `ffprobe` e `yt-dlp` sono tutti dentro l'immagine, quindi sull'host non
+va installato niente.
+
+```bash
+docker compose up -d --build    # http://127.0.0.1:4321
+```
+
+Per [CapRover](https://caprover.com), il `captain-definition` nella radice punta
+allo stesso Dockerfile:
+
+```bash
+caprover deploy
+```
+
+**Leggi qui prima di esporla.** Il server ascolta su loopback a meno che `HOST`
+non dica altro, e il compose la pubblica solo su `127.0.0.1`. È voluto: chi
+raggiunge gazza può spendere la tua CPU in ffmpeg e leggere qualsiasi cosa
+decodifichi. Mettici davanti un'autenticazione — quella base di CapRover basta —
+prima di farla raggiungere da altri. Se la esponi oltre il loopback te lo scrive
+lei stessa nei log.
+
+I carrier stanno in `/tmp` e vengono cancellati una volta scaricati, quindi non
+c'è nessun volume da montare e niente da salvare. Il compose lo monta come
+tmpfs da 2 GB: un file da 400 KB diventa 78 MB di mp4 che esistono solo fino al
+download, ed è meglio tenerli fuori dal disco.
+
+## Perché non serverless
+
+Vercel e simili non possono ospitarla. I corpi di richiesta e risposta sono
+limitati attorno ai 4.5 MB mentre gazza sposta decine di megabyte per
+operazione; un file da 400 KB richiede circa 40 secondi di x264, contro un
+limite di 60 secondi per funzione; e ffmpeg, ffprobe e yt-dlp lì non ci sono
+proprio. Un container è la forma giusta.
+
 ## Requisiti
 
 `ffmpeg` nel PATH per tutto, `yt-dlp` nel PATH per leggere da un URL.

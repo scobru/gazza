@@ -17,6 +17,14 @@ import {
 import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@gazza/cli/dist/pipeline';
 
 const PORT = Number(process.env.PORT ?? 4321);
+
+/**
+ * Loopback unless told otherwise. This reads files and shells out to ffmpeg, so
+ * exposing it means handing strangers a video encoder; a container has to opt
+ * in with HOST=0.0.0.0, and then it is the operator's job to put something in
+ * front of it.
+ */
+const HOST = process.env.HOST ?? '127.0.0.1';
 const PAGE = join(__dirname, '..', 'src', 'index.html');
 
 /**
