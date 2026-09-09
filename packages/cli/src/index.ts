@@ -33,7 +33,7 @@ terminal, never passed as an argument where the shell history and the process
 list would keep it; set DBFORALL_PASSWORD to script it. Decoding a sealed
 carrier asks for it again. Lose the password and the file is gone.
 
---stream <id> forces one yt-dlp format instead of the highest bitrate, e.g.
+--stream <id> forces one yt-dlp format instead of the best rendition, e.g.
 --stream 399 to read YouTube's AV1 rendition rather than its h264 one.
 
 --crop auto finds the grid inside a larger frame: a screen recording of a

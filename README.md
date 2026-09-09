@@ -174,11 +174,17 @@ verdict   file is recoverable
 
 ## Uploading
 
-Upload the file as it is. If the platform offers cropping, filters or
+Upload the file as it is. If the platform offers cropping, filters, music or
 stabilisation, skip all of it: a crop moves the grid and no amount of error
-correction brings it back. Wait for the full resolution version to finish
-processing before reading it back - immediately after an upload only a
-downscaled rendition exists, and the cells do not survive it.
+correction brings it back.
+
+Wait for the full resolution version to finish processing before reading it
+back. Immediately after an upload only a downscaled rendition exists, and the
+cells do not survive it - `yt-dlp -F <url>` shows what is ready.
+
+On Instagram, post a **Reel**, not a feed video: the feed crops to 4:5 while
+Reels keep the full 9:16. Post from a public account, or reading it back needs
+cookies.
 
 ## Requirements
 
@@ -209,5 +215,5 @@ packages/cli/   pipeline.ts  ffmpeg streaming, crop detection, inspection
   renditions late and not for every video.
 - **Upload is manual.** The tool writes an mp4; putting it on a platform and
   getting the URL back is your job. Only downloading is automated.
-- **Against the terms of service** of both platforms. The account carrying the
+- **Against the terms of service** of these platforms. The account carrying the
   data can be removed, and with it the data.
