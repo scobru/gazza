@@ -57,6 +57,25 @@ platform serves. Capacity that does not survive was never capacity.
 re-timing 30 fps to 24 drops a fifth of the chunks and the file is gone. A
 second copy survives it; a third only adds bytes.
 
+### Measured on real platforms
+
+Two round trips through platforms that actually re-encode, decoded byte for
+byte with the `youtube` profile:
+
+| platform | came back as | corrections | frames lost | result |
+| --- | --- | --- | --- | --- |
+| WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
+| Telegram | 1280x720 h264, 5.8 Mbps | 0.0 per frame | none | identical |
+
+WhatsApp downscaled by 2.26x, well past the 12 px cell threshold measured
+above, and the file still came back. Rescaling is linear, so a cell's average
+colour survives shrinking as long as it stays above roughly 3 pixels — what
+matters is the cell size at encode time, not in the file that comes back.
+
+Neither test stresses what YouTube does, though: both kept a high bitrate for
+their resolution, while YouTube keeps the resolution and cuts the bitrate. That
+axis is still only covered by the simulated transcodes.
+
 | profile | frame | capacity | throughput | largest file |
 | --- | --- | --- | --- | --- |
 | `youtube` | 1920x1080 | 2011 B/frame | ~30 KB per second of video | no limit |
@@ -112,9 +131,10 @@ npm install && npm run build && npm test
 
 - **Upload is manual.** The tool writes an mp4; putting it on a platform and
   getting the URL back is your job. Only downloading is automated.
-- **Not verified against a real platform.** Every number here comes from a
-  local VP9 transcode standing in for the real thing. A live upload may do
-  things ffmpeg does not — sharpening, cropping, overlays.
+- **YouTube itself is unverified.** WhatsApp and Telegram round trips pass, but
+  neither reproduces YouTube's 1080p bitrate ladder; that part rests on
+  simulated transcodes. Reading a video back off YouTube needs an access route
+  this project does not have.
 - **Instagram is the less tested of the two.** Its geometry was measured the
   same way as YouTube's, but a Reel goes through more than a transcode: the
   app re-frames, and reading one back with `yt-dlp` may need cookies for
