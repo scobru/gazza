@@ -48,8 +48,12 @@ function positional(args: string[]): string[] {
 const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
 /**
- * Pull the highest resolution video-only stream. Audio would only be re-encoded
- * for nothing, and a downscaled stream loses the cells we came for.
+ * Pull the least damaged video-only stream at 1080p or under. Audio would only
+ * be re-encoded for nothing, and a downscaled stream loses the cells we came
+ * for. The bitrate sort matters: YouTube offers the same video as h264 and as
+ * AV1, and AV1 at a similar bitrate destroys far more of the grid. Without it
+ * yt-dlp picks either one, so the same command decodes on one run and fails on
+ * the next.
  */
 function download(url: string, directory: string, browser?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -131,7 +135,8 @@ async function main(argv: string[]): Promise<void> {
       decodeVideoFile(path, profile, {
         crop: flag(rest, 'crop'),
         onProgress: ({ completed, total }) =>
-          process.stderr.write(`recovered chunk ${completed}/${total}`),
+          process.stderr.write(`
+recovered chunk ${completed}/${total}`),
       })
     );
 

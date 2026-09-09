@@ -66,7 +66,8 @@ byte with the `youtube` profile:
 | --- | --- | --- | --- | --- |
 | WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | Telegram | 1280x720 h264, 5.8 Mbps | 0.0 per frame | none | identical |
-| YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | **failed at 12 px cells** |
+| YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | failed, at 12 px cells |
+| YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per frame | none | identical, at 16 px cells |
 
 WhatsApp downscaled by 2.26x, well past the 12 px cell threshold measured
 above, and the file still came back. Rescaling is linear, so a cell's average
@@ -82,7 +83,13 @@ back.
 
 Re-measured against AV1 at 4 Mbps, cells of 16 px bring the damage back down to
 0.5 corrections per frame, so that is what the `youtube` profile now uses. It
-costs 45% of the capacity.
+costs 45% of the capacity. A second real upload at 16 px came back byte for
+byte: 1104 frames, all readable, no corrections, parity never needed.
+
+That second round trip came back as h264 rather than AV1, so it does not by
+itself retire the AV1 result - it confirms the retuned profile against the
+gentler of the two streams YouTube serves. The 16 px sizing rests on the local
+AV1 measurement.
 
 The lesson generalises: a codec is not a bitrate. Measuring against the wrong
 codec flattered the profile by more than a factor of two.
