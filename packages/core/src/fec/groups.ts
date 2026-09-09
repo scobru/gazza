@@ -112,6 +112,7 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
 
   const recovered: number[] = [];
   const unrecoverable: number[] = [];
+  const shortfalls: string[] = [];
 
   for (const parityChunks of parityByGroup.values()) {
     const members = parityChunks[0].header.parityMembers ?? [];
@@ -137,6 +138,13 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
     }
 
     if (survivingChunks.length < k) {
+      // Say which side ran out. Losing data chunks is expected and covered;
+      // losing the parity that would have covered them is a different problem
+      // and points at a different fix.
+      shortfalls.push(
+        `${gone.join(', ')} (group had ${k - gone.length} of ${k} data chunks and ` +
+          `${parityChunks.length} of its parity, needs ${k} pieces in total)`
+      );
       unrecoverable.push(...gone);
       continue;
     }
@@ -174,10 +182,8 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
 
   const stillMissing = [...missing, ...unrecoverable].filter((i) => !data.has(i));
   if (stillMissing.length > 0) {
-    throw new Error(
-      `Cannot rebuild chunks ${[...new Set(stillMissing)].sort((a, b) => a - b).join(', ')}: ` +
-        'too many lost in one parity group'
-    );
+    const detail = shortfalls.length > 0 ? shortfalls.join('; ') : [...new Set(stillMissing)].sort((a, b) => a - b).join(', ');
+    throw new Error(`Cannot rebuild chunks ${detail}`);
   }
 
   return {

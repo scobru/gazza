@@ -171,7 +171,7 @@ test('inspect names the chunks that went missing', { skip: !hasFfmpeg && 'ffmpeg
   const report = await inspectVideo(cut, PROFILE);
   assert.deepEqual(report.missing, [0, 1, 2, 3, 4, 5, 6]);
   assert.equal(report.recoverable, false);
-  assert.match(report.reason ?? '', /too many lost in one parity group/);
+  assert.match(report.reason ?? '', /Cannot rebuild chunks .*group had/);
 });
 
 test('a profile with no duration cap has no payload cap', () => {

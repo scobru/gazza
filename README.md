@@ -62,31 +62,42 @@ second copy survives it; a third only adds bytes.
 Two round trips through platforms that actually re-encode, decoded byte for
 byte with the `youtube` profile:
 
-| platform | came back as | corrections | frames lost | result |
+| platform | came back as | corrections | chunks lost | result |
 | --- | --- | --- | --- | --- |
 | WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | Telegram | 1280x720 h264, 5.8 Mbps | 0.0 per frame | none | identical |
+| YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | **failed at 12 px cells** |
 
 WhatsApp downscaled by 2.26x, well past the 12 px cell threshold measured
 above, and the file still came back. Rescaling is linear, so a cell's average
 colour survives shrinking as long as it stays above roughly 3 pixels — what
 matters is the cell size at encode time, not in the file that comes back.
 
-Neither test stresses what YouTube does, though: both kept a high bitrate for
-their resolution, while YouTube keeps the resolution and cuts the bitrate. That
-axis is still only covered by the simulated transcodes.
+YouTube is the harsh one, and it broke the profile. A real upload comes back as
+**AV1 at 4 Mbps**, and AV1 destroys far more than VP9 does at the same bitrate -
+which is what the simulated transcodes had been measuring. At 12 px cells, 22
+frames of 560 were unreadable, 9 chunks of 280 were gone, and one parity group
+lost both data and the parity that would have covered it. The file did not come
+back.
+
+Re-measured against AV1 at 4 Mbps, cells of 16 px bring the damage back down to
+0.5 corrections per frame, so that is what the `youtube` profile now uses. It
+costs 45% of the capacity.
+
+The lesson generalises: a codec is not a bitrate. Measuring against the wrong
+codec flattered the profile by more than a factor of two.
 
 | profile | frame | capacity | throughput | largest file |
 | --- | --- | --- | --- | --- |
-| `youtube` | 1920x1080 | 2011 B/frame | ~30 KB per second of video | no limit |
+| `youtube` | 1920x1080 | 1114 B/frame | ~17 KB per second of video | no limit |
 | `instagram` | 1080x1920 | 2031 B/frame | ~30 KB per second of video | ~1.9 MB |
 
 Instagram caps a post at 90 seconds, which caps the file at roughly 1.9 MB.
 `encode` refuses an oversized file up front rather than spending minutes in
 x264 producing a video the platform will reject.
 
-A 150 KB file becomes 84 data chunks plus 24 parity, 216 frames, 7.2 seconds of
-video, and about 5 MB of mp4.
+A 150 KB file becomes about 150 data chunks plus parity on the YouTube profile,
+roughly 12 seconds of video.
 
 ## Commands
 
@@ -131,10 +142,11 @@ npm install && npm run build && npm test
 
 - **Upload is manual.** The tool writes an mp4; putting it on a platform and
   getting the URL back is your job. Only downloading is automated.
-- **YouTube itself is unverified.** WhatsApp and Telegram round trips pass, but
-  neither reproduces YouTube's 1080p bitrate ladder; that part rests on
-  simulated transcodes. Reading a video back off YouTube needs an access route
-  this project does not have.
+- **The YouTube profile has not been re-verified end to end.** The 16 px cells
+  come from reproducing AV1 at 4 Mbps locally after a real upload failed at
+  12 px; the corrected profile has not itself made the full round trip yet.
+- **Instagram rests on VP9 measurements**, the same yardstick that flattered
+  YouTube. Treat its capacity as provisional until a real Reel confirms it.
 - **Instagram is the less tested of the two.** Its geometry was measured the
   same way as YouTube's, but a Reel goes through more than a transcode: the
   app re-frames, and reading one back with `yt-dlp` may need cookies for

@@ -6,7 +6,7 @@ import { INSTAGRAM_PROFILE, PROFILES, YOUTUBE_PROFILE, profileFor } from './prof
 // These capacities came out of the transcode measurements documented in
 // profiles.ts. If a change moves them, it changed how much survives a platform.
 test('the shipped profiles carry the capacity they were tuned for', () => {
-  assert.equal(frameGeometry(YOUTUBE_PROFILE).capacityBytes, 2011);
+  assert.equal(frameGeometry(YOUTUBE_PROFILE).capacityBytes, 1114);
   assert.equal(frameGeometry(INSTAGRAM_PROFILE).capacityBytes, 2031);
 });
 

@@ -338,6 +338,7 @@ export async function decodeVideoFile(
   const { onProgress } = options;
   const crop = options.crop === 'auto' ? await detectCrop(inputPath) : options.crop;
   const byIndex = new Map<number, EncodedChunk>();
+  let dataSeen = 0;
   let framesRead = 0;
   let framesRejected = 0;
 
@@ -347,7 +348,10 @@ export async function decodeVideoFile(
       const chunk = parseChunk(readFrame(frame, profile).bytes);
       if (!byIndex.has(chunk.header.chunkIndex)) {
         byIndex.set(chunk.header.chunkIndex, chunk);
-        onProgress?.({ phase: 'decode', completed: byIndex.size, total: chunk.header.totalChunks });
+        if (chunk.header.kind === 'data') dataSeen++;
+        // Parity chunks are not part of the file, so counting them here would
+        // report more chunks recovered than the file has.
+        onProgress?.({ phase: 'decode', completed: dataSeen, total: chunk.header.totalChunks });
       }
     } catch {
       framesRejected++;
