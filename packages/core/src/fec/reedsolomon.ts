@@ -81,13 +81,38 @@ export function buildGeneratorMatrix(k: number, m: number): number[][] {
 }
 
 /**
+ * The Vandermonde parity rows written by chunk version 2. Kept only so carriers
+ * made before the Cauchy fix still decode; never write with this. Its square
+ * submatrices are not all invertible, which is the bug it was replaced for, so
+ * some loss patterns still fail here - correctly reported rather than guessed.
+ */
+export function buildLegacyGeneratorMatrix(k: number, m: number): number[][] {
+  const matrix: number[][] = Array.from({ length: k + m }, () => new Array(k).fill(0));
+  for (let i = 0; i < k; i++) matrix[i][i] = 1;
+
+  for (let r = 0; r < m; r++) {
+    const base = (r + 1) & 0xff;
+    for (let c = 0; c < k; c++) {
+      matrix[k + r][c] = c === 0 ? 1 : gfMul(matrix[k + r][c - 1], base);
+    }
+  }
+  return matrix;
+}
+
+export type GeneratorMatrixBuilder = (k: number, m: number) => number[][];
+
+/**
  * Encodes K data blocks of length L into M parity blocks of length L.
  */
-export function encodeReedSolomon(dataChunks: Uint8Array[], parityCount: number): Uint8Array[] {
+export function encodeReedSolomon(
+  dataChunks: Uint8Array[],
+  parityCount: number,
+  buildMatrix: GeneratorMatrixBuilder = buildGeneratorMatrix
+): Uint8Array[] {
   const k = dataChunks.length;
   if (k === 0) return [];
   const chunkSize = dataChunks[0].length;
-  const matrix = buildGeneratorMatrix(k, parityCount);
+  const matrix = buildMatrix(k, parityCount);
 
   const parityChunks: Uint8Array[] = Array.from(
     { length: parityCount },
@@ -121,7 +146,8 @@ export function encodeReedSolomon(dataChunks: Uint8Array[], parityCount: number)
 export function decodeReedSolomon(
   survivingChunks: Uint8Array[],
   survivingIndices: number[],
-  k: number
+  k: number,
+  buildMatrix: GeneratorMatrixBuilder = buildGeneratorMatrix
 ): Uint8Array[] {
   if (survivingChunks.length < k) {
     throw new Error(`Insufficient chunks for RS recovery: have ${survivingChunks.length}, need ${k}`);
@@ -152,7 +178,7 @@ export function decodeReedSolomon(
   }
 
   // Extract the k x k submatrix corresponding to the surviving rows
-  const fullMatrix = buildGeneratorMatrix(k, Math.max(...usedIndices) - k + 1);
+  const fullMatrix = buildMatrix(k, Math.max(...usedIndices) - k + 1);
   const subMatrix: number[][] = Array.from({ length: k }, (_, row) => {
     const origRowIdx = usedIndices[row];
     return [...fullMatrix[origRowIdx]];

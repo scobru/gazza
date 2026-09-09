@@ -1,7 +1,7 @@
 import { CHUNK_MAGIC, CHUNK_VERSION } from '../codec/chunk';
 import { crc32 } from '../codec/crc32';
 import { EncodedChunk } from '../codec/types';
-import { decodeReedSolomon, encodeReedSolomon } from './reedsolomon';
+import { buildLegacyGeneratorMatrix, decodeReedSolomon, encodeReedSolomon } from './reedsolomon';
 
 /**
  * Erasure coding across chunks. Frame-level FEC repairs what a lossy re-encode
@@ -93,14 +93,7 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
   for (const chunk of received) {
     if (chunk.header.kind === 'data') {
       if (!data.has(chunk.header.chunkIndex)) data.set(chunk.header.chunkIndex, chunk);
-    } else if (
-      chunk.header.kind === 'parity' &&
-      chunk.header.parityGroupId !== undefined &&
-      // Parity from an older version was built on a different generator matrix
-      // and would solve to plausible-looking rubbish. Data chunks are systematic
-      // and carry across versions untouched; parity does not.
-      chunk.header.version === CHUNK_VERSION
-    ) {
+    } else if (chunk.header.kind === 'parity' && chunk.header.parityGroupId !== undefined) {
       const group = parityByGroup.get(chunk.header.parityGroupId) ?? [];
       if (!group.some((c) => c.header.parityIndex === chunk.header.parityIndex)) group.push(chunk);
       parityByGroup.set(chunk.header.parityGroupId, group);
@@ -148,7 +141,15 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
       continue;
     }
 
-    const payloads = decodeReedSolomon(survivingChunks, survivingIndices, k);
+    // Version 2 wrote its parity with the old Vandermonde matrix, so it has to
+    // be solved with that one: the current matrix would give plausible rubbish.
+    const legacy = parityChunks[0].header.version < CHUNK_VERSION;
+    const payloads = decodeReedSolomon(
+      survivingChunks,
+      survivingIndices,
+      k,
+      legacy ? buildLegacyGeneratorMatrix : undefined
+    );
     for (const index of gone) {
       const row = members.indexOf(index);
       const last = index === totalChunks - 1;

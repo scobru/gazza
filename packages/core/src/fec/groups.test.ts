@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { assembleFile, chunkFile } from '../codec/chunk';
 import { EncodedChunk } from '../codec/types';
 import { DEFAULT_PARITY, buildParityChunks, recoverDataChunks } from './groups';
+import { buildLegacyGeneratorMatrix, encodeReedSolomon } from './reedsolomon';
+import { crc32 } from '../codec/crc32';
 
 const OPTS = { fileName: 'payload.bin', mimeType: 'application/octet-stream', payloadSize: 100 };
 
@@ -167,5 +169,37 @@ test('recovery works when parity chunks are missing too', async () => {
   const survivors = [...drop(dataChunks, [4, 9]), ...parity.slice(2)];
   const result = recoverDataChunks(survivors);
   assert.deepEqual(result.recovered, [4, 9]);
+  assert.deepEqual(await assembleFile(result.chunks), data);
+});
+
+test('parity written by version 2 still rebuilds a chunk', async () => {
+  // A carrier already sitting on a platform was written before the matrix
+  // changed. Its parity must be solved with the matrix that wrote it.
+  const { data, dataChunks } = await makeFile(16, 31);
+  const payloadSize = Math.max(...dataChunks.map((c) => c.payload.length));
+  const padded = dataChunks.map((c) => {
+    const out = new Uint8Array(payloadSize);
+    out.set(c.payload);
+    return out;
+  });
+
+  const template = dataChunks[0].header;
+  const legacyParity = encodeReedSolomon(padded, 4, buildLegacyGeneratorMatrix).map((payload, j) => ({
+    header: {
+      ...template,
+      version: 2,
+      kind: 'parity' as const,
+      chunkIndex: template.totalChunks + j,
+      payloadLength: payload.length,
+      chunkCrc: crc32(payload),
+      parityGroupId: 0,
+      parityMembers: dataChunks.map((c) => c.header.chunkIndex),
+      parityIndex: j,
+    },
+    payload,
+  }));
+
+  const result = recoverDataChunks(drop([...dataChunks, ...legacyParity], [6]));
+  assert.deepEqual(result.recovered, [6]);
   assert.deepEqual(await assembleFile(result.chunks), data);
 });
