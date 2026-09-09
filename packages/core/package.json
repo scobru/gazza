@@ -1,5 +1,5 @@
 {
-  "name": "@dbforall/core",
+  "name": "@gazza/core",
   "version": "1.0.0",
   "description": "Core optical steganography and error correction engine",
   "main": "./dist/index.js",

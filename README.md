@@ -1,15 +1,17 @@
-# dbforall
+# gazza
 
 **English** · [Italiano](README.it.md)
+
+*A magpie steals shiny things and hides them where nobody looks.*
 
 Store arbitrary files inside a video, so a platform that hosts video hosts your
 bytes. The file becomes a grid of coloured cells; the grid survives the
 platform's re-encode; the video comes back and the file comes out byte for byte.
 
 ```bash
-dbforall encode report.pdf carrier.mp4 --encrypt
+gazza encode report.pdf carrier.mp4 --encrypt
 # upload carrier.mp4 by hand, then:
-dbforall decode https://youtu.be/VIDEO_ID
+gazza decode https://youtu.be/VIDEO_ID
 ```
 
 Verified end to end on YouTube, Instagram, WhatsApp and Telegram. The numbers below are
@@ -136,9 +138,9 @@ log in the way. Encoding asks for it twice: a typo cannot be undone later.
 ## Commands
 
 ```bash
-dbforall encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
-dbforall decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
-dbforall inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
+gazza encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
+gazza decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
+gazza inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
 ```
 
 Encode and decode must use the same platform profile (default: `youtube`). The
@@ -155,7 +157,7 @@ under rate limiting. `--stream <id>` forces one specific format.
 `--encrypt` seals the file with AES-256-GCM before it becomes chunks. The
 password never appears as an argument, where the shell history and the process
 list would both keep a copy: it is asked for on the terminal without echo, or
-read from `DBFORALL_PASSWORD` for scripts.
+read from `GAZZA_PASSWORD` for scripts.
 
 The file name and MIME type travel *inside* the ciphertext and the chunk headers
 carry `sealed.dbfa` instead, so a carrier on a public platform gives up neither
@@ -177,8 +179,8 @@ the file hash, its own index and the total, so the parts identify themselves.
 Hand them back in any order, duplicated or not, and they reassemble.
 
 ```bash
-dbforall encode archive.zip carrier.mp4 --split 60
-dbforall decode https://youtu.be/AAA https://youtu.be/BBB --out archive.zip
+gazza encode archive.zip carrier.mp4 --split 60
+gazza decode https://youtu.be/AAA https://youtu.be/BBB --out archive.zip
 ```
 
 Chunks from a different file are rejected on sight rather than quietly ignored:
@@ -278,8 +280,8 @@ packages/web/   server.ts    loopback server, estimates and progress
 ## Getting started
 
 ```bash
-git clone https://github.com/scobru/dbforall.git
-cd dbforall
+git clone https://github.com/scobru/gazza.git
+cd gazza
 npm install && npm run build && npm test
 ```
 
@@ -297,4 +299,4 @@ npm run web:dev      # http://127.0.0.1:4321
 
 ---
 
-Made by [scobru](https://github.com/scobru) · [github.com/scobru/dbforall](https://github.com/scobru/dbforall) · MIT
+Made by [scobru](https://github.com/scobru) · [github.com/scobru/gazza](https://github.com/scobru/gazza) · MIT

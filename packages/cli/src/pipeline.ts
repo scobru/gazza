@@ -19,7 +19,7 @@ import {
   recoverDataChunks,
   renderFrame,
   serializeChunk,
-} from '@dbforall/core';
+} from '@gazza/core';
 
 export interface EncodeOptions {
   fileName: string;

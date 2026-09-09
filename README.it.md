@@ -1,6 +1,8 @@
-# dbforall
+# gazza
 
 [English](README.md) · **Italiano**
+
+*La gazza ruba le cose luccicanti e le nasconde dove nessuno guarda.*
 
 Archivia file dentro un video, così una piattaforma che ospita video ospita i
 tuoi byte. Il file diventa una griglia di celle colorate; la griglia sopravvive
@@ -8,9 +10,9 @@ alla ricompressione della piattaforma; il video torna indietro e il file ne esce
 byte per byte.
 
 ```bash
-dbforall encode documento.pdf carrier.mp4 --encrypt
+gazza encode documento.pdf carrier.mp4 --encrypt
 # carichi carrier.mp4 a mano, poi:
-dbforall decode https://youtu.be/VIDEO_ID
+gazza decode https://youtu.be/VIDEO_ID
 ```
 
 Verificato dall'inizio alla fine su YouTube, Instagram, WhatsApp e Telegram. I
@@ -140,9 +142,9 @@ qualsiasi log lungo il percorso. In codifica la chiede due volte: un refuso non
 ## Comandi
 
 ```bash
-dbforall encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
-dbforall decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
-dbforall inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
+gazza encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
+gazza decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
+gazza inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
 ```
 
 Codifica e decodifica devono usare lo stesso profilo di piattaforma (default:
@@ -160,7 +162,7 @@ cosa che fa per i video non elencati e sotto limitazione di frequenza.
 `--encrypt` sigilla il file con AES-256-GCM prima che diventi chunk. La password
 non compare mai come argomento, dove la cronologia della shell e la lista dei
 processi ne conserverebbero una copia: viene chiesta sul terminale senza eco,
-oppure letta da `DBFORALL_PASSWORD` per gli script.
+oppure letta da `GAZZA_PASSWORD` per gli script.
 
 Il nome del file e il tipo MIME viaggiano *dentro* il cifrato e i chunk portano
 `sealed.dbfa` al loro posto, quindi un carrier su una piattaforma pubblica non
@@ -182,8 +184,8 @@ proprio indice e il totale, quindi i pezzi si identificano da soli. Ridalli in
 qualsiasi ordine, anche duplicati, e si rimettono insieme.
 
 ```bash
-dbforall encode archivio.zip carrier.mp4 --split 60
-dbforall decode https://youtu.be/AAA https://youtu.be/BBB --out archivio.zip
+gazza encode archivio.zip carrier.mp4 --split 60
+gazza decode https://youtu.be/AAA https://youtu.be/BBB --out archivio.zip
 ```
 
 I chunk di un file diverso vengono rifiutati subito invece che ignorati in
@@ -253,8 +255,8 @@ impone comunque limiti stretti sui video. Lì usa `--split`.
 ## Per iniziare
 
 ```bash
-git clone https://github.com/scobru/dbforall.git
-cd dbforall
+git clone https://github.com/scobru/gazza.git
+cd gazza
 npm install && npm run build && npm test
 ```
 
@@ -301,4 +303,4 @@ packages/web/   server.ts    server su loopback, stime e avanzamento
 
 ---
 
-Fatto da [scobru](https://github.com/scobru) · [github.com/scobru/dbforall](https://github.com/scobru/dbforall) · MIT
+Fatto da [scobru](https://github.com/scobru) · [github.com/scobru/gazza](https://github.com/scobru/gazza) · MIT

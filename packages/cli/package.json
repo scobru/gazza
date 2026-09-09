@@ -1,15 +1,17 @@
 {
-  "name": "@dbforall/cli",
+  "name": "@gazza/cli",
   "version": "1.0.0",
   "description": "Command line encoder and decoder built on ffmpeg",
   "main": "./dist/index.js",
-  "bin": { "dbforall": "./dist/index.js" },
+  "bin": {
+    "gazza": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "node --test dist/**/*.test.js"
   },
   "dependencies": {
-    "@dbforall/core": "1.0.0"
+    "@gazza/core": "1.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

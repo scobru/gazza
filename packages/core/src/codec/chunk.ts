@@ -1,7 +1,9 @@
 import { crc32 } from './crc32';
 import { ChunkHeader, ChunkKind, EncodedChunk } from './types';
 
-export const CHUNK_MAGIC = 0x44424641; // "DBFA"
+// "DBFA". Kept from the project's first name: it is wire format, and every
+// carrier already uploaded starts with these four bytes.
+export const CHUNK_MAGIC = 0x44424641;
 export const CHUNK_VERSION = 3;
 
 /**
@@ -124,7 +126,7 @@ export function parseChunk(bytes: Uint8Array): EncodedChunk {
   if (bytes.length < FIXED_SIZE + HEADER_CRC_SIZE) throw new Error('Chunk truncated: shorter than a header');
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (view.getUint32(0) !== CHUNK_MAGIC) throw new Error('Bad magic: not a dbforall chunk');
+  if (view.getUint32(0) !== CHUNK_MAGIC) throw new Error('Bad magic: not a gazza chunk');
 
   const version = bytes[4];
   if (!READABLE_VERSIONS.includes(version)) {

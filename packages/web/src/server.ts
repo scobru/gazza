@@ -13,8 +13,8 @@ import {
   open as unseal,
   profileFor,
   seal,
-} from '@dbforall/core';
-import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@dbforall/cli/dist/pipeline';
+} from '@gazza/core';
+import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@gazza/cli/dist/pipeline';
 
 const PORT = Number(process.env.PORT ?? 4321);
 const PAGE = join(__dirname, '..', 'src', 'index.html');
@@ -96,7 +96,7 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
  * browser history and written to any access log in the way, a header is not.
  */
 const passwordOf = (req: IncomingMessage): string => {
-  const value = req.headers['x-dbforall-password'];
+  const value = req.headers['x-gazza-password'];
   return (Array.isArray(value) ? value[0] : value) ?? '';
 };
 
@@ -130,7 +130,7 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
   const send = (event: unknown) => res.write(`${JSON.stringify(event)}\n`);
 
-  const directory = await mkdtemp(join(tmpdir(), 'dbforall-web-'));
+  const directory = await mkdtemp(join(tmpdir(), 'gazza-web-'));
   try {
     const result = await encodeFileToVideo(data, join(directory, `${carriedName}.mp4`), {
       fileName: carriedName,
@@ -267,7 +267,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/decode/job') {
-      const directory = await mkdtemp(join(tmpdir(), 'dbforall-job-'));
+      const directory = await mkdtemp(join(tmpdir(), 'gazza-job-'));
       const id = basename(directory);
       jobs.set(id, { directory, files: [] });
       return json(res, 200, { id });
@@ -315,7 +315,7 @@ const server = createServer(async (req, res) => {
 // Loopback only. This serves file contents and shells out to ffmpeg; it has no
 // business being reachable from the network.
 server.listen(PORT, '127.0.0.1', () => {
-  process.stdout.write(`dbforall web interface on http://127.0.0.1:${PORT}\n`);
+  process.stdout.write(`gazza is awake on http://127.0.0.1:${PORT}\n`);
 });
 
 const cleanup = async () => {

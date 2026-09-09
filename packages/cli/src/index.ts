@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@dbforall/core';
+import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@gazza/core';
 import {
   decodeVideos,
   downloadVideo,
@@ -23,14 +23,14 @@ const MIME_BY_EXT: Record<string, string> = {
   '.json': 'application/json',
 };
 
-const USAGE = `dbforall - store files inside video
+const USAGE = `gazza - the magpie that hides your files in video
 
-  dbforall encode  <file> <out.mp4>       [--platform ...] [--encrypt] [--split 60]
+  gazza encode  <file> <out.mp4>       [--platform ...] [--encrypt] [--split 60]
 
 --platform picks the geometry: youtube, instagram, telegram or whatsapp. Encode
 and decode must use the same one.
-  dbforall decode  <video|url>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
-  dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
+  gazza decode  <video|url>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
+  gazza inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
 
 --split <seconds> cuts the carrier into several videos of at most that length,
 named carrier-001.mp4, carrier-002.mp4 and so on. Pass them all back to decode
@@ -39,7 +39,7 @@ in any order: no manifest is needed, the chunks identify themselves.
 --encrypt seals the file with AES-256-GCM before it becomes chunks, hiding the
 contents, the file name and the type. The password is asked for on the
 terminal, never passed as an argument where the shell history and the process
-list would keep it; set DBFORALL_PASSWORD to script it. Decoding a sealed
+list would keep it; set GAZZA_PASSWORD to script it. Decoding a sealed
 carrier asks for it again. Lose the password and the file is gone.
 
 --stream <id> forces one yt-dlp format instead of the best rendition, e.g.
@@ -77,10 +77,10 @@ function positional(args: string[]): string[] {
  * process list would both keep a copy.
  */
 function askPassword(prompt: string): Promise<string> {
-  const fromEnvironment = process.env.DBFORALL_PASSWORD;
+  const fromEnvironment = process.env.GAZZA_PASSWORD;
   if (fromEnvironment) return Promise.resolve(fromEnvironment);
   if (!process.stdin.isTTY) {
-    return Promise.reject(new Error('No terminal to ask for a password on; set DBFORALL_PASSWORD'));
+    return Promise.reject(new Error('No terminal to ask for a password on; set GAZZA_PASSWORD'));
   }
 
   return new Promise((resolve) => {
@@ -108,7 +108,7 @@ async function withVideos<T>(
 ): Promise<T> {
   if (!sources.some(isUrl)) return body(sources);
 
-  const directory = await mkdtemp(join(tmpdir(), 'dbforall-'));
+  const directory = await mkdtemp(join(tmpdir(), 'gazza-'));
   try {
     const paths: string[] = [];
     for (const [i, source] of sources.entries()) {
@@ -151,7 +151,7 @@ async function main(argv: string[]): Promise<void> {
 
     if (rest.includes('--encrypt')) {
       const password = await askPassword('Password: ');
-      if (!process.env.DBFORALL_PASSWORD) {
+      if (!process.env.GAZZA_PASSWORD) {
         // A typo here would be unrecoverable: nothing else knows the key.
         if ((await askPassword('Repeat: ')) !== password) throw new Error('Passwords do not match');
       }

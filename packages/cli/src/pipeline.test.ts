@@ -4,8 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INSTAGRAM_PROFILE, VideoProfile, YOUTUBE_PROFILE } from '@dbforall/core';
-import { PALETTE_8 } from '@dbforall/core';
+import { INSTAGRAM_PROFILE, VideoProfile, YOUTUBE_PROFILE } from '@gazza/core';
+import { PALETTE_8 } from '@gazza/core';
 import {
   decodeVideoFile,
   decodeVideos,
@@ -42,7 +42,7 @@ function randomBytes(n: number, seed = 1): Uint8Array {
 
 let dir = '';
 test.before(() => {
-  dir = mkdtempSync(join(tmpdir(), 'dbforall-'));
+  dir = mkdtempSync(join(tmpdir(), 'gazza-'));
 });
 test.after(() => {
   if (dir) rmSync(dir, { recursive: true, force: true });

@@ -3,110 +3,212 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dbforall</title>
+<title>gazza</title>
 <style>
   :root {
-    --bg: #101014; --panel: #17171d; --line: #26262f;
-    --text: #e7e7ee; --dim: #8b8b9a; --accent: #d8b74a; --bad: #d2604f;
+    --ink: #14151d; --panel: #1c1e29; --line: #2c3040;
+    --text: #edeff6; --dim: #939ab2;
+    --gold: #f2b134; --iris: #46c9a8; --bad: #e57a68;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 3rem 1.5rem; background: var(--bg); color: var(--text);
+    margin: 0; padding: 2.5rem 1.5rem 4rem; background:
+      radial-gradient(120% 80% at 50% -10%, #1d2030 0%, var(--ink) 55%) fixed;
+    color: var(--text);
     font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   main { max-width: 44rem; margin: 0 auto; }
-  h1 { font-size: 1.6rem; margin: 0 0 .3rem; letter-spacing: -.02em; }
-  h1 + p { color: var(--dim); margin: 0 0 2.5rem; }
+
+  /* ---- the bird ---- */
+  header { display: flex; align-items: center; gap: 1.1rem; margin-bottom: 2rem; }
+  #gazza { width: 116px; height: 116px; flex: 0 0 auto; overflow: visible; }
+  .bird { transform-origin: 64px 110px; animation: bob 3.4s ease-in-out infinite; }
+  .wing { transform-origin: 58px 58px; }
+  .eye { transform-origin: 93px 38px; animation: blink 5s infinite; }
+  .tail { transform-origin: 58px 84px; animation: sway 3.4s ease-in-out infinite; }
+  .loot { opacity: 0; transform-origin: 110px 74px; }
+  .spark { opacity: 0; }
+
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+  @keyframes sway { 0%,100% { transform: rotate(0deg) } 50% { transform: rotate(-7deg) } }
+  @keyframes blink { 0%,92%,100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
+  @keyframes flap { 0%,100% { transform: rotate(0deg) } 50% { transform: rotate(-34deg) } }
+  @keyframes hop { 0%,100% { transform: translateY(0) } 30% { transform: translateY(-13px) } 60% { transform: translateY(0) } }
+  @keyframes pop { from { opacity: 0; transform: scale(.3) rotate(-25deg) } to { opacity: 1; transform: scale(1) rotate(0) } }
+  @keyframes twinkle { 0%,100% { opacity: 0 } 50% { opacity: 1 } }
+
+  /* moods */
+  #gazza.busy .bird { animation: bob .5s ease-in-out infinite; }
+  #gazza.busy .wing { animation: flap .34s ease-in-out infinite; }
+  #gazza.busy .tail { animation: sway .5s ease-in-out infinite; }
+  #gazza.done .bird { animation: hop .8s ease-out 1; }
+  #gazza.done .loot { animation: pop .45s ease-out forwards; }
+  #gazza.done .spark { animation: twinkle 1.1s ease-in-out infinite; }
+  #gazza.eyeing .bird { animation: bob 1.6s ease-in-out infinite; }
+  #gazza.oops .bird { animation: none; transform: rotate(4deg) translateY(3px); }
+
+  .titles h1 { font-size: 1.75rem; margin: 0; letter-spacing: -.02em; }
+  .titles h1 em { font-style: normal; color: var(--iris); }
+  #says { color: var(--dim); margin: .25rem 0 0; min-height: 1.5em; }
+
+  /* ---- controls ---- */
+  nav { display: flex; gap: .4rem; margin-bottom: 1.5rem; }
+  nav button {
+    margin: 0; width: auto; flex: 0 0 auto; padding: .45rem 1.1rem; font-size: .9rem;
+    background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 999px;
+  }
+  nav button[aria-selected=true] { background: var(--panel); color: var(--text); border-color: var(--iris); }
 
   .drop {
-    border: 1.5px dashed var(--line); border-radius: 12px; padding: 2.5rem 1.5rem;
-    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+    border: 1.5px dashed var(--line); border-radius: 14px; padding: 2.3rem 1.5rem;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s, transform .15s;
   }
-  .drop:hover, .drop.over { border-color: var(--accent); background: #1c1c22; }
+  .drop:hover, .drop.over { border-color: var(--gold); background: #22243040; transform: translateY(-1px); }
   .drop strong { display: block; font-size: 1.05rem; margin-bottom: .2rem; }
   .drop span { color: var(--dim); font-size: .9rem; }
   input[type=file] { display: none; }
 
-  fieldset { border: 0; padding: 0; margin: 1.5rem 0 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  fieldset { border: 0; padding: 0; margin: 1.4rem 0 0; display: flex; gap: 1.3rem; flex-wrap: wrap; }
   label { display: flex; flex-direction: column; gap: .35rem; font-size: .82rem; color: var(--dim); }
-  select, input[type=number] {
+  select, input[type=password], textarea {
     background: var(--panel); color: var(--text); border: 1px solid var(--line);
-    border-radius: 7px; padding: .5rem .6rem; font: inherit; font-size: .9rem; min-width: 11rem;
+    border-radius: 9px; padding: .55rem .65rem; font: inherit; font-size: .9rem; min-width: 11rem;
   }
+  textarea { width: 100%; min-height: 5.5rem; resize: vertical; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--iris); }
 
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.4rem; margin-top: 1.5rem; }
-  .panel h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--dim); margin: 0 0 1rem; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.2rem 1.4rem; margin-top: 1.4rem; }
+  .panel h2 { font-size: .76rem; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 0 0 1rem; font-weight: 600; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: .55rem 1.5rem; margin: 0; }
   dt { color: var(--dim); font-size: .88rem; }
   dd { margin: 0; font-variant-numeric: tabular-nums; }
-  dd b { color: var(--accent); font-weight: 600; }
+  dd b { color: var(--gold); font-weight: 600; }
 
   button {
-    margin-top: 1.5rem; width: 100%; padding: .8rem; font: inherit; font-weight: 600;
-    background: var(--accent); color: #17170e; border: 0; border-radius: 9px; cursor: pointer;
+    margin-top: 1.4rem; width: 100%; padding: .85rem; font: inherit; font-weight: 600;
+    background: var(--gold); color: #1d1503; border: 0; border-radius: 11px; cursor: pointer;
+    transition: filter .15s;
   }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
   button:disabled { background: var(--line); color: var(--dim); cursor: not-allowed; }
 
-  progress { width: 100%; height: 6px; margin-top: 1rem; accent-color: var(--accent); }
+  progress { width: 100%; height: 7px; margin-top: 1rem; accent-color: var(--iris); }
   .warn { color: var(--bad); font-size: .88rem; margin-top: .8rem; }
+  .note { color: var(--dim); font-size: .85rem; margin: .6rem 0 0; }
   a.part {
-    display: flex; justify-content: space-between; gap: 1rem; padding: .6rem .8rem;
-    background: #1d1d24; border: 1px solid var(--line); border-radius: 8px;
+    display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .85rem;
+    background: #232634; border: 1px solid var(--line); border-radius: 10px;
     color: var(--text); text-decoration: none; margin-bottom: .5rem; font-size: .9rem;
   }
-  a.part:hover { border-color: var(--accent); }
-  a.part span { color: var(--dim); font-variant-numeric: tabular-nums; }
-  nav { display: flex; gap: .4rem; margin-bottom: 1.75rem; }
-  nav button {
-    margin: 0; width: auto; flex: 0 0 auto; padding: .45rem 1rem; font-size: .9rem;
-    background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 8px;
+  a.part:hover { border-color: var(--gold); }
+  a.part span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .lang { display: flex; gap: .35rem; margin-bottom: 1.2rem; }
+  .lang button {
+    margin: 0; width: auto; padding: .3rem .8rem; font-size: .8rem; border-radius: 999px;
+    background: transparent; color: var(--dim); border: 1px solid var(--line);
   }
-  nav button[aria-selected=true] { background: var(--panel); color: var(--text); border-color: var(--accent); }
-  textarea {
-    width: 100%; min-height: 5.5rem; resize: vertical; background: var(--panel); color: var(--text);
-    border: 1px solid var(--line); border-radius: 9px; padding: .7rem .8rem; font: inherit; font-size: .9rem;
+  .lang button[aria-selected=true] { color: var(--text); border-color: var(--iris); }
+  .about h3 { font-size: 1rem; margin: 1.6rem 0 .5rem; color: var(--text); }
+  .about h3:first-of-type { margin-top: 0; }
+  .about p { margin: 0 0 .7rem; color: #c7cbdb; }
+  .about ul { margin: 0 0 .7rem; padding-left: 1.1rem; color: #c7cbdb; }
+  .about li { margin-bottom: .3rem; }
+  .about b { color: var(--gold); }
+  .about code {
+    background: #232634; border: 1px solid var(--line); border-radius: 5px;
+    padding: .1rem .35rem; font-size: .85em;
   }
-  input[type=password] {
-    background: var(--panel); color: var(--text); border: 1px solid var(--line);
-    border-radius: 7px; padding: .5rem .6rem; font: inherit; font-size: .9rem; min-width: 11rem;
+
+  footer {
+    margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: .85rem; display: flex; gap: .5rem; flex-wrap: wrap;
   }
-  .note { color: var(--dim); font-size: .85rem; margin: .6rem 0 0; }
+  footer a { color: var(--iris); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1>dbforall</h1>
-  <p>Turn a file into a video a platform will host for you, and back again.</p>
+  <header>
+    <svg id="gazza" viewBox="0 0 130 130" aria-hidden="true">
+      <g class="bird">
+        <!-- tail: long, black, wide at the root so it reads as a tail -->
+        <g class="tail">
+          <path d="M58 84 q-6 10-20 20 q-12 8-22 12 l-4-8 q12-6 22-14 q12-10 16-18 Z" fill="#0e1220"/>
+          <path d="M56 88 q-6 8-18 17 q-10 7-19 11 l-1.5-3 q10-5 20-13 q11-9 16-15 Z" fill="#3d8f7d" opacity=".55"/>
+        </g>
+
+        <!-- back and body -->
+        <path d="M46 74 q0-24 20-32 q22-8 32 10 q10 18-2 34 q-12 16-30 12 q-20-4-20-24 Z" fill="#151a29"/>
+
+        <!-- white belly, front and low, where a magpie carries it -->
+        <path d="M72 56 q16 4 18 22 q1 16-12 20 q-9 3-15-3 q9-18 9-39 Z" fill="#eef2f8"/>
+
+        <!-- white shoulder stripe, the other half of the giveaway -->
+        <path d="M62 54 q10-4 15 2 q-9 5-13 16 q-6-10-2-18 Z" fill="#eef2f8"/>
+
+        <!-- folded wing, black with a thin sheen along its edge -->
+        <g class="wing">
+          <path d="M52 56 q16-8 26 6 q9 14 2 28 q-6 11-17 8 q-13-4-15-20 q-2-16 4-22 Z" fill="#0e1220"/>
+          <path d="M58 62 q11-5 17 5 q6 10 1 20 q-4 7-10 5 q4-16-8-30 Z" fill="#3d8f7d" opacity=".5"/>
+        </g>
+
+        <!-- head -->
+        <circle cx="86" cy="42" r="16" fill="#0e1220"/>
+        <circle class="eye" cx="93" cy="38" r="4" fill="#fbfcff"/>
+        <circle cx="94.5" cy="38" r="2" fill="#0b0e16"/>
+        <path d="M101 43 L120 46.5 L101 50" fill="#f2b134"/>
+        <path d="M101 46.5 L120 46.5 L101 50 Z" fill="#cf8f26"/>
+
+        <!-- feet -->
+        <path d="M66 98 v8 M66 106 l-6 4 M66 106 l6 4" stroke="#f2b134" stroke-width="3" stroke-linecap="round" fill="none"/>
+
+        <!-- the shiny thing, only once she has it -->
+        <g class="loot">
+          <path d="M110 66 l9 8 -9 10 -9-10 Z" fill="#f2b134"/>
+          <path d="M110 66 l9 8 -9 3 Z" fill="#ffd777"/>
+        </g>
+        <g class="spark" fill="#ffd777">
+          <path d="M118 48 l2 5 5 2 -5 2 -2 5 -2-5 -5-2 5-2 Z"/>
+          <path d="M100 88 l1.3 3.4 3.4 1.3 -3.4 1.3 -1.3 3.4 -1.3-3.4 -3.4-1.3 3.4-1.3 Z"/>
+        </g>
+      </g>
+    </svg>
+    <div class="titles">
+      <h1><em>gazza</em></h1>
+      <p id="says">A magpie hides your files in videos. Feed her something.</p>
+    </div>
+  </header>
 
   <nav>
-    <button id="tabEncode" aria-selected="true">Encode</button>
-    <button id="tabDecode" aria-selected="false">Decode</button>
+    <button id="tabEncode" aria-selected="true">Hide</button>
+    <button id="tabDecode" aria-selected="false">Fetch back</button>
+    <button id="tabAbout" aria-selected="false">About</button>
   </nav>
 
   <div id="paneEncode">
-
   <label class="drop" id="drop">
     <input type="file" id="file">
-    <strong id="dropTitle">Choose a file</strong>
+    <strong id="dropTitle">Give her a file</strong>
     <span id="dropHint">or drag it here</span>
   </label>
 
   <fieldset>
-    <label>Platform
+    <label>Nest it on
       <select id="platform">
         <option value="youtube">YouTube — 1920×1080</option>
         <option value="instagram">Instagram — 1080×1920, 90 s per post</option>
         <option value="telegram">Telegram — send as video</option>
         <option value="whatsapp">WhatsApp — send as video</option>
-        <option value="googlephotos">Google Photos — storage saver, unverified</option>
+        <option value="googlephotos">Google Photos — storage saver</option>
       </select>
     </label>
-    <label>Encrypt with
+    <label>Lock it with
       <input type="password" id="sealPassword" placeholder="a password, or leave empty" autocomplete="new-password">
     </label>
-    <label>Repeat it
-      <input type="password" id="sealRepeat" placeholder="no way to recover it" autocomplete="new-password">
+    <label>Again
+      <input type="password" id="sealRepeat" placeholder="she cannot remind you" autocomplete="new-password">
     </label>
     <label>Split into parts of
       <select id="split">
@@ -121,7 +223,7 @@
   <p class="warn" id="offline" hidden></p>
 
   <section class="panel" id="preview" hidden>
-    <h2>Before you commit</h2>
+    <h2>What it will cost</h2>
     <dl>
       <dt>Video</dt><dd><b id="pDuration">—</b> <span id="pParts"></span></dd>
       <dt>Size</dt><dd id="pSize">—</dd>
@@ -130,11 +232,11 @@
     <p class="warn" id="pWarn" hidden></p>
   </section>
 
-  <button id="go" disabled>Encode</button>
+  <button id="go" disabled>Hide it</button>
   <progress id="bar" hidden></progress>
 
   <section class="panel" id="result" hidden>
-    <h2>Ready to upload</h2>
+    <h2>Stashed — now go upload it</h2>
     <div id="parts"></div>
     <p class="warn" id="error" hidden></p>
   </section>
@@ -143,15 +245,15 @@
   <div id="paneDecode" hidden>
     <label class="drop" id="dropVideos">
       <input type="file" id="videos" accept="video/*" multiple>
-      <strong id="videosTitle">Choose the carrier videos</strong>
-      <span id="videosHint">or drag them here &mdash; several parts at once is fine</span>
+      <strong id="videosTitle">Show her the videos</strong>
+      <span id="videosHint">or drag them here — several parts at once is fine</span>
     </label>
 
     <p class="note" id="urlsNote">Or paste the links, one per line:</p>
     <textarea id="urls" placeholder="https://youtu.be/..."></textarea>
 
     <fieldset>
-      <label>Platform
+      <label>Taken from
         <select id="platformDecode">
           <option value="youtube">YouTube</option>
           <option value="instagram">Instagram</option>
@@ -161,25 +263,149 @@
         </select>
       </label>
       <label>Password
-        <input type="password" id="password" placeholder="only if it was sealed" autocomplete="off">
+        <input type="password" id="password" placeholder="only if it was locked" autocomplete="off">
       </label>
     </fieldset>
 
-    <button id="goDecode">Decode</button>
+    <button id="goDecode">Fetch it back</button>
     <progress id="barDecode" hidden></progress>
 
     <section class="panel" id="resultDecode" hidden>
-      <h2>Recovered</h2>
+      <h2>She brought it back</h2>
       <div id="recovered"></div>
       <dl id="decodeStats"></dl>
       <p class="warn" id="errorDecode" hidden></p>
     </section>
   </div>
+
+  <div id="paneAbout" hidden>
+    <div class="lang">
+      <button id="langEn" aria-selected="true">English</button>
+      <button id="langIt" aria-selected="false">Italiano</button>
+    </div>
+    <section class="panel about" id="aboutEn">
+      <h3>What it is</h3>
+      <p>A magpie steals shiny things and hides them where nobody looks. Give
+      <b>gazza</b> a file and she turns it into a video: a grid of coloured cells,
+      one frame after another. Upload that video anywhere that hosts video, and
+      the platform stores your bytes for you. Show her the video again and the
+      file comes back <b>byte for byte</b>.</p>
+
+      <h3>Why it survives</h3>
+      <p>Platforms do not keep your video, they re-encode it: they compress it,
+      blur the edges, shift the colours, sometimes drop frames or shrink the
+      picture. Four layers answer that.</p>
+      <ul>
+        <li>Cells large enough to survive compression, and four colours far
+        enough apart to stay distinguishable.</li>
+        <li>A calibration strip, so the decoder measures the colours <em>as they
+        came back</em> rather than trusting the originals.</li>
+        <li>An error-correcting code inside each frame, interleaved so a ruined
+        block becomes one repairable bit per symbol instead of a dead one.</li>
+        <li>Reed-Solomon parity across frames: 4 of every 20 chunks may vanish
+        entirely and the file still comes back.</li>
+      </ul>
+
+      <h3>What it costs</h3>
+      <p>About <b>190 times</b> the size of the file, in video. 400 KB becomes
+      37 seconds of 1080p and roughly 78 MB of mp4. This is storage for
+      documents and small archives, not for a media library.</p>
+
+      <h3>Tested on real platforms</h3>
+      <p>YouTube, Instagram, WhatsApp, Telegram and Google Photos have all
+      returned a file byte for byte. YouTube is the harshest: it re-encodes to
+      AV1, which needs bigger cells than the rest.</p>
+
+      <h3>Worth knowing</h3>
+      <ul>
+        <li>Upload the file untouched. Any crop, filter or stabilisation moves
+        the grid and no error correction brings it back.</li>
+        <li>Wait for the full-resolution version to finish processing before
+        reading it back.</li>
+        <li>A password encrypts the contents <em>and</em> the file name. Nobody
+        can recover it, not even her.</li>
+        <li>Uploading is yours to do, on purpose: which account and how often is
+        a decision, not a library function.</li>
+        <li>Using platforms this way is against their terms of service. The
+        account carrying the data can be removed, and the data with it.</li>
+      </ul>
+    </section>
+    <section class="panel about" id="aboutIt" hidden>
+      <h3>Cos'è</h3>
+      <p>La gazza ruba le cose luccicanti e le nasconde dove nessuno guarda. Dai
+      un file a <b>gazza</b> e lei lo trasforma in un video: una griglia di celle
+      colorate, un fotogramma dopo l'altro. Carichi quel video ovunque ospitino
+      video, e la piattaforma ti conserva i byte. Le rimostri il video e il file
+      torna indietro <b>byte per byte</b>.</p>
+
+      <h3>Perché sopravvive</h3>
+      <p>Le piattaforme non conservano il tuo video, lo ricomprimono: lo
+      schiacciano, sfocano i bordi, spostano i colori, a volte scartano
+      fotogrammi o rimpiccioliscono l'immagine. Quattro livelli rispondono a
+      questo.</p>
+      <ul>
+        <li>Celle abbastanza grandi da sopravvivere alla compressione, e quattro
+        colori abbastanza distanti da restare distinguibili.</li>
+        <li>Una striscia di calibrazione, così il decoder misura i colori
+        <em>come sono tornati</em> invece di fidarsi degli originali.</li>
+        <li>Un codice a correzione d'errore dentro ogni fotogramma, distribuito
+        in modo che un blocco rovinato diventi un bit riparabile per simbolo
+        invece di un simbolo morto.</li>
+        <li>Parità Reed-Solomon fra i fotogrammi: 4 chunk ogni 20 possono
+        sparire del tutto e il file torna lo stesso.</li>
+      </ul>
+
+      <h3>Quanto costa</h3>
+      <p>Circa <b>190 volte</b> la dimensione del file, in video. 400 KB
+      diventano 37 secondi di 1080p e all'incirca 78 MB di mp4. È archivio per
+      documenti e piccoli pacchetti, non per una libreria multimediale.</p>
+
+      <h3>Provata su piattaforme vere</h3>
+      <p>YouTube, Instagram, WhatsApp, Telegram e Google Photos hanno tutte
+      restituito un file byte per byte. YouTube è la più dura: ricomprime in
+      AV1, che richiede celle più grandi delle altre.</p>
+
+      <h3>Da sapere</h3>
+      <ul>
+        <li>Carica il file com'è. Qualsiasi ritaglio, filtro o stabilizzazione
+        sposta la griglia e nessuna correzione d'errore la riporta indietro.</li>
+        <li>Aspetta che la versione a piena risoluzione finisca l'elaborazione
+        prima di rileggerla.</li>
+        <li>Una password cifra il contenuto <em>e</em> il nome del file. Nessuno
+        può recuperarla, nemmeno lei.</li>
+        <li>Caricare tocca a te, di proposito: quale account e con che frequenza
+        è una decisione, non una funzione di libreria.</li>
+        <li>Usare le piattaforme così è contro i loro termini di servizio.
+        L'account che porta i dati può essere chiuso, e con lui i dati.</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>
+    <span>Made by <a href="https://github.com/scobru" target="_blank" rel="noreferrer">scobru</a></span>
+    <span>·</span>
+    <a href="https://github.com/scobru/gazza" target="_blank" rel="noreferrer">github.com/scobru/gazza</a>
+    <span>·</span>
+    <span>MIT</span>
+  </footer>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
 let chosen = null;
+
+/**
+ * The bird reacts. Moods are CSS classes; the line under her name says what she
+ * is up to. Kept to four states so it stays a hint, not a performance.
+ */
+function mood(state, line) {
+  $('gazza').className = state;
+  if (line) $('says').textContent = line;
+}
+
+const idleLine = 'A magpie hides your files in videos. Feed her something.';
+
+
 
 const humanBytes = (n) =>
   n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB'
@@ -192,6 +418,7 @@ const humanTime = (s) =>
 
 function pick(file) {
   chosen = file;
+  mood('eyeing', 'Ooh. ' + file.name + '. She wants it.');
   $('dropTitle').textContent = file.name;
   $('dropHint').textContent = humanBytes(file.size);
   $('result').hidden = true;
@@ -276,20 +503,40 @@ async function refresh() {
 
 // --- tabs ---------------------------------------------------------------
 function showTab(which) {
-  const encoding = which === 'encode';
-  $('tabEncode').setAttribute('aria-selected', String(encoding));
-  $('tabDecode').setAttribute('aria-selected', String(!encoding));
-  $('paneEncode').hidden = !encoding;
-  $('paneDecode').hidden = encoding;
+  for (const name of ['Encode', 'Decode', 'About']) {
+    const selected = which === name.toLowerCase();
+    $('tab' + name).setAttribute('aria-selected', String(selected));
+    $('pane' + name).hidden = !selected;
+  }
 }
-$('tabEncode').addEventListener('click', () => showTab('encode'));
-$('tabDecode').addEventListener('click', () => showTab('decode'));
+
+function showLanguage(code) {
+  $('langEn').setAttribute('aria-selected', String(code === 'en'));
+  $('langIt').setAttribute('aria-selected', String(code === 'it'));
+  $('aboutEn').hidden = code !== 'en';
+  $('aboutIt').hidden = code === 'en';
+}
+$('langEn').addEventListener('click', () => showLanguage('en'));
+$('langIt').addEventListener('click', () => showLanguage('it'));
+$('tabEncode').addEventListener('click', () => {
+  showTab('encode');
+  mood('', idleLine);
+});
+$('tabDecode').addEventListener('click', () => {
+  showTab('decode');
+  mood('', 'Show her where you left it.');
+});
+$('tabAbout').addEventListener('click', () => {
+  showTab('about');
+  mood('', 'She is happy to explain herself.');
+});
 
 // --- decoding -----------------------------------------------------------
 let carriers = [];
 
 function pickCarriers(files) {
   carriers = [...files];
+  mood('eyeing', 'She remembers these.');
   $('videosTitle').textContent =
     carriers.length === 1 ? carriers[0].name : carriers.length + ' videos';
   $('videosHint').textContent = humanBytes(carriers.reduce((n, f) => n + f.size, 0));
@@ -331,6 +578,7 @@ $('goDecode').addEventListener('click', async () => {
   const urls = $('urls').value.split('\n').map((u) => u.trim()).filter(Boolean);
   if (carriers.length === 0 && urls.length === 0) return;
 
+  mood('busy', 'Digging through the frames.');
   $('goDecode').disabled = true;
   $('barDecode').hidden = false;
   $('barDecode').removeAttribute('value');
@@ -350,14 +598,16 @@ $('goDecode').addEventListener('click', async () => {
 
     const response = await fetch('/decode?' + query, {
       method: 'POST',
-      headers: $('password').value ? { 'x-dbforall-password': $('password').value } : {},
+      headers: $('password').value ? { 'x-gazza-password': $('password').value } : {},
     });
     await readEvents(response, (event) => {
       if (event.error) {
         $('errorDecode').textContent = event.error;
         $('errorDecode').hidden = false;
         $('resultDecode').hidden = false;
+        mood('oops', 'Nothing in there she recognises.');
       } else if (event.done) {
+        mood('done', 'Got it. ' + event.name + ', all of it.');
         const a = document.createElement('a');
         a.className = 'part';
         a.href = '/recovered/' + id + '?name=' + encodeURIComponent(event.name);
@@ -377,6 +627,7 @@ $('goDecode').addEventListener('click', async () => {
     $('errorDecode').textContent = err.message;
     $('errorDecode').hidden = false;
     $('resultDecode').hidden = false;
+    mood('oops', 'Nothing in there she recognises.');
   } finally {
     $('barDecode').hidden = true;
     $('goDecode').disabled = false;
@@ -392,6 +643,7 @@ $('go').addEventListener('click', async () => {
   $('result').hidden = true;
   $('error').hidden = true;
   $('parts').innerHTML = '';
+  mood('busy', 'Stuffing it into a video. Do not disturb.');
 
   const query = new URLSearchParams({ platform: $('platform').value, name: chosen.name });
   if ($('split').value) query.set('split', $('split').value);
@@ -411,7 +663,7 @@ $('go').addEventListener('click', async () => {
       method: 'POST',
       body: chosen,
       // In a header rather than the query string: a URL is kept in history.
-      headers: sealWith ? { 'x-dbforall-password': sealWith } : {},
+      headers: sealWith ? { 'x-gazza-password': sealWith } : {},
     });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -432,7 +684,11 @@ $('go').addEventListener('click', async () => {
           $('error').textContent = event.error;
           $('error').hidden = false;
           $('result').hidden = false;
+          mood('oops', 'She dropped it.');
         } else if (event.done) {
+          mood('done', event.sealed
+            ? 'Hidden and locked. She has no idea what the password was.'
+            : 'Hidden. Upload it somewhere and she will find it again.');
           if (event.sealed) {
             const note = document.createElement('p');
             note.className = 'note';
@@ -458,11 +714,14 @@ $('go').addEventListener('click', async () => {
     $('error').textContent = err.message;
     $('error').hidden = false;
     $('result').hidden = false;
+    mood('oops', 'She dropped it.');
   } finally {
     $('bar').hidden = true;
     $('go').disabled = false;
   }
 });
 </script>
+</body>
+
 </body>
 </html>
