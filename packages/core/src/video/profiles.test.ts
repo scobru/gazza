@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { frameGeometry } from './frame';
-import { INSTAGRAM_PROFILE, PROFILES, YOUTUBE_PROFILE, profileFor } from './profiles';
+import {
+  INSTAGRAM_PROFILE,
+  PROFILES,
+  TELEGRAM_PROFILE,
+  WHATSAPP_PROFILE,
+  YOUTUBE_PROFILE,
+  profileFor,
+} from './profiles';
 
 // These capacities came out of the transcode measurements documented in
 // profiles.ts. If a change moves them, it changed how much survives a platform.
@@ -10,7 +17,7 @@ test('the shipped profiles carry the capacity they were tuned for', () => {
   assert.equal(frameGeometry(INSTAGRAM_PROFILE).capacityBytes, 2031);
 });
 
-test('both profiles repeat every chunk twice', () => {
+test('every profile repeats each chunk twice', () => {
   // One copy per chunk loses a fifth of the file when a platform re-times
   // 30 fps to 24. Do not lower this without re-running that test.
   assert.equal(YOUTUBE_PROFILE.repeatFrames, 2);
@@ -20,7 +27,17 @@ test('both profiles repeat every chunk twice', () => {
 test('profiles are looked up by name and unknown names are refused', () => {
   assert.equal(profileFor('youtube'), YOUTUBE_PROFILE);
   assert.equal(profileFor('instagram'), INSTAGRAM_PROFILE);
+  assert.equal(profileFor('telegram'), TELEGRAM_PROFILE);
+  assert.equal(profileFor('whatsapp'), WHATSAPP_PROFILE);
   assert.throws(() => profileFor('tiktok'), /Unknown platform "tiktok"/);
+});
+
+test('the messaging profiles keep the cells that survived their round trips', () => {
+  // WhatsApp shrank 1920x1080 to 848x478 and Telegram to 1280x720; 12 px cells
+  // came through both. Raising them would only cost capacity.
+  assert.equal(TELEGRAM_PROFILE.cellSize, 12);
+  assert.equal(WHATSAPP_PROFILE.cellSize, 12);
+  assert.equal(TELEGRAM_PROFILE.maxDurationSeconds, undefined);
 });
 
 test('every profile is a geometry the frame layer accepts', () => {

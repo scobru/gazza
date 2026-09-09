@@ -20,6 +20,9 @@ const MIME_BY_EXT: Record<string, string> = {
 const USAGE = `dbforall - store files inside video
 
   dbforall encode  <file> <out.mp4>       [--platform ...] [--encrypt] [--split 60]
+
+--platform picks the geometry: youtube, instagram, telegram or whatsapp. Encode
+and decode must use the same one.
   dbforall decode  <video|url>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
   dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
 
@@ -42,7 +45,7 @@ player, letterboxing, anything that does not fill the frame edge to edge.
 decode and inspect accept a URL and fetch it with yt-dlp. Add
 --cookies-from-browser chrome (or edge, firefox) when YouTube refuses an
 anonymous request, which it does for unlisted videos and under rate limiting.
-Encode and decode must use the same platform profile (default: youtube).
+Default: youtube.
 `;
 
 function flag(args: string[], name: string): string | undefined {

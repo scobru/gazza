@@ -18,6 +18,9 @@ const PAGE = join(__dirname, '..', 'src', 'index.html');
 const BYTES_PER_FRAME: Record<string, number> = {
   youtube: 73_800,
   instagram: 129_700,
+  // 12 px cells at 1080p, measured at 11.3 MB over 92 frames.
+  telegram: 122_800,
+  whatsapp: 122_800,
 };
 
 interface Estimate {

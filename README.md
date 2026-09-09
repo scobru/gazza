@@ -16,10 +16,16 @@ README says so.
 
 ## What it costs
 
-| profile | frame | per frame | throughput | overhead |
+| profile | frame | per frame | throughput | notes |
 | --- | --- | --- | --- | --- |
-| `youtube` | 1920x1080 | 1114 B | ~16 KB per second of video | ~190x |
-| `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | ~100x |
+| `youtube` | 1920x1080 | 1114 B | ~16 KB per second of video | 16 px cells, sized for AV1 |
+| `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | portrait, 90 s per post |
+| `telegram` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video, not as a document |
+| `whatsapp` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video; heavy size limits |
+
+YouTube costs the most per byte because it is the only one that re-encodes to
+AV1, which needs bigger cells. The others keep a generous bitrate for the
+resolution they downscale to, so 12 px cells are enough.
 
 A 400 KB file becomes 37 seconds of 1080p and about 78 MB of mp4. This is
 storage for documents and small archives, not for media libraries.
@@ -206,6 +212,11 @@ cells do not survive it - `yt-dlp -F <url>` shows what is ready.
 On Instagram, post a **Reel**, not a feed video: the feed crops to 4:5 while
 Reels keep the full 9:16. Post from a public account, or reading it back needs
 cookies.
+
+On Telegram and WhatsApp, send the carrier **as a video, from the gallery** -
+not as a document. A document is transported untouched, which sounds better and
+is not: nothing re-encodes it, so nothing about it is tested, and WhatsApp
+enforces tight size limits on video anyway. Use `--split` there.
 
 ## Requirements
 

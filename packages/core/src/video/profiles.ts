@@ -71,9 +71,42 @@ export const INSTAGRAM_PROFILE: VideoProfile = {
   maxDurationSeconds: 90,
 };
 
+/**
+ * Telegram re-encodes to 1280x720 but keeps a generous bitrate for it: a real
+ * round trip came back at 5.8 Mbps with not a single Hamming correction. The
+ * gentlest of the four.
+ */
+export const TELEGRAM_PROFILE: VideoProfile = {
+  platform: 'telegram',
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  repeatFrames: REPEAT_FRAMES,
+  cellSize: INSTAGRAM_CELL_SIZE,
+  palette: PALETTE_4,
+};
+
+/**
+ * WhatsApp downscales hardest of all - 1920x1080 came back as 848x478, a factor
+ * of 2.26 - but keeps 7 Mbps for it, so 12 px cells came through with 0.4
+ * corrections per frame and no losses. Send it as a video, not as a document:
+ * as a document nothing is re-encoded and nothing is tested.
+ */
+export const WHATSAPP_PROFILE: VideoProfile = {
+  platform: 'whatsapp',
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  repeatFrames: REPEAT_FRAMES,
+  cellSize: INSTAGRAM_CELL_SIZE,
+  palette: PALETTE_4,
+};
+
 export const PROFILES: Record<Exclude<Platform, 'custom'>, VideoProfile> = {
   youtube: YOUTUBE_PROFILE,
   instagram: INSTAGRAM_PROFILE,
+  telegram: TELEGRAM_PROFILE,
+  whatsapp: WHATSAPP_PROFILE,
 };
 
 export function profileFor(platform: string): VideoProfile {
