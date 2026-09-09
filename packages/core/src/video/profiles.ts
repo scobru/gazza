@@ -108,12 +108,13 @@ export const WHATSAPP_PROFILE: VideoProfile = {
  * where a file that is not a video cannot be stored at all, which is what makes
  * the video wrapper worth its overhead here.
  *
- * NOT VERIFIED. Its bitrate is unmeasured, so this borrows YouTube's 16 px
- * cells, the most robust setting we have: they survived AV1 at 4 Mbps, and
- * Photos is unlikely to be harsher than that. Measure before trusting it -
- * guessing a codec is exactly how the YouTube profile went wrong the first
- * time. Upload at "storage saver", not "original quality": original quality
- * stores the file untouched and tests nothing.
+ * A real round trip works: 1662 frames, none unreadable, parity never needed.
+ * The cell size is inherited from YouTube rather than measured for Photos, so
+ * the margin is unknown - sufficient, but not characterised.
+ *
+ * Upload at "storage saver", not "original quality": original quality stores
+ * the file untouched and tests nothing. Reading it back needs the file itself;
+ * yt-dlp has no extractor for Google Photos links.
  */
 export const GOOGLE_PHOTOS_PROFILE: VideoProfile = {
   platform: 'googlephotos',

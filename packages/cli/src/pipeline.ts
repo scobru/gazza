@@ -143,12 +143,27 @@ function ffmpeg(args: string[]) {
  * The bitrate tiebreak matters on YouTube, which offers the same upload as h264
  * and as AV1: AV1 at a similar bitrate destroys far more of the grid.
  */
+/** Hosts yt-dlp has no extractor for. Better said up front than as its error. */
+const UNFETCHABLE: { pattern: RegExp; host: string }[] = [
+  { pattern: /(^|\.)photos\.google\.com|photos\.app\.goo\.gl/i, host: 'Google Photos' },
+];
+
 export function downloadVideo(
   url: string,
   directory: string,
   browser?: string,
   format?: string
 ): Promise<string> {
+  const unfetchable = UNFETCHABLE.find((entry) => entry.pattern.test(url));
+  if (unfetchable) {
+    return Promise.reject(
+      new Error(
+        `${unfetchable.host} links cannot be fetched: there is no yt-dlp extractor for them. ` +
+          'Download the video from the album and pass the file instead.'
+      )
+    );
+  }
+
   return new Promise((resolve, reject) => {
     const proc = spawn(
       'yt-dlp',

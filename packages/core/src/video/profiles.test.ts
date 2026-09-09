@@ -34,9 +34,9 @@ test('profiles are looked up by name and unknown names are refused', () => {
   assert.throws(() => profileFor('tiktok'), /Unknown platform "tiktok"/);
 });
 
-test('the unverified profile takes the most robust cells we have', () => {
-  // Google Photos has never been measured. Until it is, it borrows the setting
-  // that survived the harshest codec seen so far rather than a guessed one.
+test('Google Photos inherits the most robust cells we have', () => {
+  // Its round trip works but its margin was never characterised, so it keeps
+  // the setting that survived the harshest codec seen rather than a guessed one.
   assert.equal(GOOGLE_PHOTOS_PROFILE.cellSize, YOUTUBE_PROFILE.cellSize);
 });
 

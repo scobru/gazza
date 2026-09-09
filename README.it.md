@@ -25,7 +25,7 @@ questo file lo dice.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per secondo di video | verticale, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per secondo di video | manda come video, non come documento |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per secondo di video | come video; limiti di dimensione stretti |
-| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per secondo di video | risparmio spazio; **non ancora verificato** |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per secondo di video | risparmio spazio; scarica il file, i link non funzionano |
 
 YouTube costa di più per byte perché è l'unico che ricomprime in AV1, e l'AV1
 richiede celle più grandi. Gli altri tengono un bitrate generoso per la
@@ -71,6 +71,7 @@ certi schemi di perdita con la parità lì presente.
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per fotogramma | 9 su 280 | fallito, con celle da 12 px |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per fotogramma | nessuno | identico, con celle da 16 px |
 | Instagram | 720x1280 h264, 6.9 Mbps | 0.0 per fotogramma | nessuno | identico |
+| Google Photos | risparmio spazio | non misurate | nessuno | identico, con celle da 16 px |
 
 WhatsApp ha ridotto di 2.26 volte, ben oltre la dimensione di cella che i test
 locali indicavano come necessaria, e il file è tornato lo stesso. Il
@@ -286,11 +287,11 @@ packages/web/   server.ts    server su loopback, stime e avanzamento
 
 ## Limiti
 
-- **Google Photos è un'ipotesi, non una misura.** La sua ricompressione non è
-  mai stata messa alla prova, quindi il profilo prende in prestito le celle da
-  16 px di YouTube — l'impostazione più robusta misurata — invece di una
-  dimensionata per lui. Carica in "risparmio spazio", non in qualità originale:
-  la qualità originale conserva il file intatto e non dimostra niente.
+- **Google Photos non si rilegge da un link.** Non esiste un estrattore yt-dlp,
+  quindi il video va scaricato dall'album a mano e passato come file. Il giro in
+  sé funziona: 1662 fotogrammi, nessuno illeggibile, parità mai servita. La
+  dimensione delle celle è ereditata da YouTube e non misurata per lui, quindi
+  il margine è ignoto, solo sufficiente.
 - **Il profilo YouTube a 16 px non ha fatto un giro completo su AV1.** Viene
   dalla riproduzione locale di AV1 a 4 Mbps dopo che un caricamento vero era
   fallito a 12 px; il caricamento riuscito che è seguito è tornato in h264.

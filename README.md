@@ -24,7 +24,7 @@ README says so.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | portrait, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video, not as a document |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video; heavy size limits |
-| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per second of video | storage saver; **not verified yet** |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per second of video | storage saver; download the file, links do not work |
 
 YouTube costs the most per byte because it is the only one that re-encodes to
 AV1, which needs bigger cells. The others keep a generous bitrate for the
@@ -69,6 +69,7 @@ parity sitting right there.
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | failed, at 12 px cells |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per frame | none | identical, at 16 px cells |
 | Instagram | 720x1280 h264, 6.9 Mbps | 0.0 per frame | none | identical |
+| Google Photos | storage saver | not measured | none | identical, at 16 px cells |
 
 WhatsApp downscaled by 2.26x, well past the cell size the local tests said was
 needed, and the file still came back. Rescaling is linear, so a cell's average
@@ -262,11 +263,11 @@ packages/web/   server.ts    loopback server, estimates and progress
 
 ## Limits
 
-- **Google Photos is a guess, not a measurement.** Its re-encode has never been
-  put through a round trip, so the profile borrows YouTube's 16 px cells - the
-  most robust setting measured - rather than one sized for it. Upload at storage
-  saver, not original quality: original quality stores the file untouched and
-  proves nothing.
+- **Google Photos cannot be read back from a link.** There is no yt-dlp
+  extractor for it, so the video has to be downloaded from the album by hand and
+  passed as a file. The round trip itself works: 1662 frames, none unreadable,
+  parity never needed. Its cell size was inherited from YouTube rather than
+  measured for it, so the margin is unknown, only sufficient.
 - **The 16 px YouTube profile has not made a full AV1 round trip.** It comes
   from reproducing AV1 at 4 Mbps locally after a real upload failed at 12 px;
   the successful upload that followed came back as h264. YouTube generates AV1

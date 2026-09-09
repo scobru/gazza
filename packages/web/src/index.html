@@ -147,7 +147,7 @@
       <span id="videosHint">or drag them here &mdash; several parts at once is fine</span>
     </label>
 
-    <p class="note">Or paste the links, one per line:</p>
+    <p class="note" id="urlsNote">Or paste the links, one per line:</p>
     <textarea id="urls" placeholder="https://youtu.be/..."></textarea>
 
     <fieldset>
@@ -296,6 +296,21 @@ function pickCarriers(files) {
 }
 
 $('videos').addEventListener('change', (e) => e.target.files.length && pickCarriers(e.target.files));
+
+/**
+ * Google Photos has no yt-dlp extractor, so a link there can never work. Say so
+ * where the link would be typed rather than after a failed attempt.
+ */
+function refreshUrlField() {
+  const fetchable = $('platformDecode').value !== 'googlephotos';
+  $('urls').disabled = !fetchable;
+  $('urls').style.opacity = fetchable ? '1' : '.45';
+  $('urlsNote').textContent = fetchable
+    ? 'Or paste the links, one per line:'
+    : 'Google Photos links cannot be fetched. Download the video from the album and drop it above.';
+}
+$('platformDecode').addEventListener('change', refreshUrlField);
+refreshUrlField();
 
 /** Read a newline-delimited JSON response, handing each event to onEvent. */
 async function readEvents(response, onEvent) {
