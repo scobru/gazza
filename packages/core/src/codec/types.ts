@@ -1,4 +1,10 @@
-export type Platform = 'instagram' | 'youtube' | 'telegram' | 'whatsapp' | 'custom';
+export type Platform =
+  | 'instagram'
+  | 'youtube'
+  | 'telegram'
+  | 'whatsapp'
+  | 'googlephotos'
+  | 'custom';
 
 export type RGBColor = [number, number, number];
 export type YUVColor = [number, number, number];

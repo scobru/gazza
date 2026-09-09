@@ -102,11 +102,35 @@ export const WHATSAPP_PROFILE: VideoProfile = {
   palette: PALETTE_4,
 };
 
+/**
+ * Google Photos on "storage saver" re-encodes but caps at 1080p rather than
+ * downscaling below it, so a 1080p carrier keeps its geometry - the one place
+ * where a file that is not a video cannot be stored at all, which is what makes
+ * the video wrapper worth its overhead here.
+ *
+ * NOT VERIFIED. Its bitrate is unmeasured, so this borrows YouTube's 16 px
+ * cells, the most robust setting we have: they survived AV1 at 4 Mbps, and
+ * Photos is unlikely to be harsher than that. Measure before trusting it -
+ * guessing a codec is exactly how the YouTube profile went wrong the first
+ * time. Upload at "storage saver", not "original quality": original quality
+ * stores the file untouched and tests nothing.
+ */
+export const GOOGLE_PHOTOS_PROFILE: VideoProfile = {
+  platform: 'googlephotos',
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  repeatFrames: REPEAT_FRAMES,
+  cellSize: YOUTUBE_CELL_SIZE,
+  palette: PALETTE_4,
+};
+
 export const PROFILES: Record<Exclude<Platform, 'custom'>, VideoProfile> = {
   youtube: YOUTUBE_PROFILE,
   instagram: INSTAGRAM_PROFILE,
   telegram: TELEGRAM_PROFILE,
   whatsapp: WHATSAPP_PROFILE,
+  googlephotos: GOOGLE_PHOTOS_PROFILE,
 };
 
 export function profileFor(platform: string): VideoProfile {

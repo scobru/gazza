@@ -4,6 +4,7 @@ import { frameGeometry } from './frame';
 import {
   INSTAGRAM_PROFILE,
   PROFILES,
+  GOOGLE_PHOTOS_PROFILE,
   TELEGRAM_PROFILE,
   WHATSAPP_PROFILE,
   YOUTUBE_PROFILE,
@@ -29,7 +30,14 @@ test('profiles are looked up by name and unknown names are refused', () => {
   assert.equal(profileFor('instagram'), INSTAGRAM_PROFILE);
   assert.equal(profileFor('telegram'), TELEGRAM_PROFILE);
   assert.equal(profileFor('whatsapp'), WHATSAPP_PROFILE);
+  assert.equal(profileFor('googlephotos'), GOOGLE_PHOTOS_PROFILE);
   assert.throws(() => profileFor('tiktok'), /Unknown platform "tiktok"/);
+});
+
+test('the unverified profile takes the most robust cells we have', () => {
+  // Google Photos has never been measured. Until it is, it borrows the setting
+  // that survived the harshest codec seen so far rather than a guessed one.
+  assert.equal(GOOGLE_PHOTOS_PROFILE.cellSize, YOUTUBE_PROFILE.cellSize);
 });
 
 test('the messaging profiles keep the cells that survived their round trips', () => {

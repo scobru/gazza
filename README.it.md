@@ -25,6 +25,7 @@ questo file lo dice.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per secondo di video | verticale, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per secondo di video | manda come video, non come documento |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per secondo di video | come video; limiti di dimensione stretti |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per secondo di video | risparmio spazio; **non ancora verificato** |
 
 YouTube costa di più per byte perché è l'unico che ricomprime in AV1, e l'AV1
 richiede celle più grandi. Gli altri tengono un bitrate generoso per la
@@ -215,6 +216,12 @@ verdict   file is recoverable
 
 ## Caricare
 
+Google Photos è l'unico host dove l'involucro video ripaga il proprio costo: un
+file cifrato lì non lo puoi archiviare affatto, un video sì. Ovunque i file
+vengano conservati com'è — un drive condiviso, uno storage a oggetti —
+l'involucro è puro spreco, circa 190 volte, e cifrare il file da solo è
+strettamente meglio.
+
 Caricare tocca a te, di proposito. Lo strumento scrive un mp4 e ne rilegge uno;
 quello che succede in mezzo è una decisione su quale account, quale piattaforma
 e quale rischio, e niente di tutto ciò appartiene a una libreria. Automatizzarlo
@@ -279,6 +286,11 @@ packages/web/   server.ts    server su loopback, stime e avanzamento
 
 ## Limiti
 
+- **Google Photos è un'ipotesi, non una misura.** La sua ricompressione non è
+  mai stata messa alla prova, quindi il profilo prende in prestito le celle da
+  16 px di YouTube — l'impostazione più robusta misurata — invece di una
+  dimensionata per lui. Carica in "risparmio spazio", non in qualità originale:
+  la qualità originale conserva il file intatto e non dimostra niente.
 - **Il profilo YouTube a 16 px non ha fatto un giro completo su AV1.** Viene
   dalla riproduzione locale di AV1 a 4 Mbps dopo che un caricamento vero era
   fallito a 12 px; il caricamento riuscito che è seguito è tornato in h264.

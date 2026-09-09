@@ -24,6 +24,7 @@ README says so.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | portrait, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video, not as a document |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video; heavy size limits |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per second of video | storage saver; **not verified yet** |
 
 YouTube costs the most per byte because it is the only one that re-encodes to
 AV1, which needs bigger cells. The others keep a generous bitrate for the
@@ -209,6 +210,11 @@ verdict   file is recoverable
 
 ## Uploading
 
+Google Photos is the one host where the video wrapper earns its overhead
+outright: an encrypted file cannot be stored there at all, a video can. Anywhere
+that keeps files as they are - a shared drive, object storage - the wrapper is
+pure cost, roughly 190x, and encrypting the file on its own is strictly better.
+
 Uploading is yours to do, on purpose. The tool writes an mp4 and reads one back;
 what happens in between is a decision about which account, which platform and
 which risk, and none of that belongs in a library. Automating it would also mean
@@ -256,6 +262,11 @@ packages/web/   server.ts    loopback server, estimates and progress
 
 ## Limits
 
+- **Google Photos is a guess, not a measurement.** Its re-encode has never been
+  put through a round trip, so the profile borrows YouTube's 16 px cells - the
+  most robust setting measured - rather than one sized for it. Upload at storage
+  saver, not original quality: original quality stores the file untouched and
+  proves nothing.
 - **The 16 px YouTube profile has not made a full AV1 round trip.** It comes
   from reproducing AV1 at 4 Mbps locally after a real upload failed at 12 px;
   the successful upload that followed came back as h264. YouTube generates AV1

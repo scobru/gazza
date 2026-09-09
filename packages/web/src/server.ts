@@ -31,6 +31,7 @@ const BYTES_PER_FRAME: Record<string, number> = {
   // 12 px cells at 1080p, measured at 11.3 MB over 92 frames.
   telegram: 122_800,
   whatsapp: 122_800,
+  googlephotos: 73_800,
 };
 
 interface Estimate {
