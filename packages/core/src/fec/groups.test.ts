@@ -114,3 +114,58 @@ test('a single chunk file is still protected', async () => {
   assert.deepEqual(result.recovered, [0]);
   assert.deepEqual(await assembleFile(result.chunks), data);
 });
+
+test('every loss pattern a group can absorb is actually recoverable', async () => {
+  // Erasure decoding inverts whichever rows survived, so the generator matrix
+  // must be invertible for EVERY subset of rows, not just as a whole. A
+  // Vandermonde matrix is not: it fails on particular combinations of missing
+  // columns, with the parity sitting right there. Only an exhaustive sweep
+  // finds those, which is why this walks all 2516 patterns of up to 4 losses.
+  const { dataChunks, parity } = await makeFile(16, 21);
+  const all = [...dataChunks, ...parity];
+  const expected = dataChunks.map((c) => c.payload);
+
+  let checked = 0;
+  const sweep = (lost: number[], next: number) => {
+    if (lost.length > 0) {
+      const result = recoverDataChunks(drop(all, lost));
+      for (let i = 0; i < expected.length; i++) {
+        assert.deepEqual(result.chunks[i].payload, expected[i], `lost ${lost.join(',')} chunk ${i}`);
+      }
+      checked++;
+    }
+    if (lost.length === DEFAULT_PARITY.parityPerGroup) return;
+    for (let i = next; i < 16; i++) sweep([...lost, i], i + 1);
+  };
+  sweep([], 0);
+
+  assert.equal(checked, 2516);
+});
+
+test('scattered losses recover as well as contiguous ones', async () => {
+  const { data, dataChunks, parity } = await makeFile(16, 22);
+  const patterns = [
+    [0, 5, 10, 15],
+    [1, 2, 13, 14],
+    [0, 1, 2, 3],
+    [12, 13, 14, 15],
+    [3, 6, 9, 12],
+    [0, 15],
+    [7],
+  ];
+
+  for (const indices of patterns) {
+    const result = recoverDataChunks(drop([...dataChunks, ...parity], indices));
+    assert.deepEqual(result.recovered, indices, `pattern ${indices.join(',')}`);
+    assert.deepEqual(await assembleFile(result.chunks), data);
+  }
+});
+
+test('recovery works when parity chunks are missing too', async () => {
+  const { data, dataChunks, parity } = await makeFile(16, 23);
+  // Two data chunks and two parity chunks gone: two survivors, two holes.
+  const survivors = [...drop(dataChunks, [4, 9]), ...parity.slice(2)];
+  const result = recoverDataChunks(survivors);
+  assert.deepEqual(result.recovered, [4, 9]);
+  assert.deepEqual(await assembleFile(result.chunks), data);
+});

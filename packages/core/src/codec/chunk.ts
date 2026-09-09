@@ -2,7 +2,7 @@ import { crc32 } from './crc32';
 import { ChunkHeader, ChunkKind, EncodedChunk } from './types';
 
 export const CHUNK_MAGIC = 0x44424641; // "DBFA"
-export const CHUNK_VERSION = 2;
+export const CHUNK_VERSION = 3;
 
 /** Sentinels written when a chunk takes no part in a parity group. */
 const NO_PARITY_GROUP = 0xffffffff;

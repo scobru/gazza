@@ -52,26 +52,28 @@ export function gfInv(a: number): number {
 }
 
 /**
- * Builds a systematic Vandermonde generator matrix of size (k + m) x k.
- * The top k x k is the identity matrix I.
- * The bottom m x k contains powers of distinct alpha elements.
+ * Builds a systematic Cauchy generator matrix of size (k + m) x k.
+ * The top k x k is the identity, so data chunks travel unchanged.
+ *
+ * The parity rows are Cauchy, not Vandermonde: every square submatrix of a
+ * Cauchy matrix is invertible, which is exactly what erasure decoding needs,
+ * because it inverts whichever rows happen to survive. A Vandermonde matrix is
+ * invertible whole but not in every subset, so some loss patterns produce a
+ * singular system and fail to decode with the parity sitting right there.
  */
 export function buildGeneratorMatrix(k: number, m: number): number[][] {
-  const totalRows = k + m;
-  const matrix: number[][] = Array.from({ length: totalRows }, () => new Array(k).fill(0));
+  if (k + m > 256) throw new Error(`Cannot build a ${k}+${m} matrix over GF(256)`);
 
-  // Top k x k = Identity
-  for (let i = 0; i < k; i++) {
-    matrix[i][i] = 1;
-  }
+  const matrix: number[][] = Array.from({ length: k + m }, () => new Array(k).fill(0));
+  for (let i = 0; i < k; i++) matrix[i][i] = 1;
 
-  // Bottom m x k = Vandermonde-derived parity rows
+  // Cauchy: a[r][c] = 1 / (x_r + y_c), the two sets disjoint so no sum is zero.
+  // Addition in GF(2^8) is xor. The y set counts down from 255 so a row depends
+  // only on r and c, never on m - the decoder rebuilds this matrix without
+  // knowing how many parity rows the encoder actually wrote.
   for (let r = 0; r < m; r++) {
-    const rowIdx = k + r;
     for (let c = 0; c < k; c++) {
-      // Use distinct evaluation points: (r + 1)^c in GF(256)
-      const base = (r + 1) & 0xff;
-      matrix[rowIdx][c] = c === 0 ? 1 : gfMul(matrix[rowIdx][c - 1], base);
+      matrix[k + r][c] = gfInv(r ^ (255 - c));
     }
   }
 

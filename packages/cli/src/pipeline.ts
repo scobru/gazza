@@ -189,19 +189,32 @@ export async function encodeFileToVideo(
   };
 }
 
+const CROP_PATTERN = /^\d{1,5}:\d{1,5}:\d{1,5}:\d{1,5}$/;
+
+export interface ReadOptions {
+  /** ffmpeg crop as "w:h:x:y", or "auto" to locate the grid in the frame. */
+  crop?: string;
+  onProgress?: ProgressCallback;
+}
+
 /** Feed every decoded frame of a video to `onFrame`, streaming, never buffering. */
 async function eachFrame(
   inputPath: string,
   profile: VideoProfile,
+  crop: string | undefined,
   onFrame: (frame: Buffer) => void
 ): Promise<void> {
+  if (crop !== undefined && !CROP_PATTERN.test(crop)) {
+    throw new Error(`Bad crop "${crop}", expected w:h:x:y in pixels`);
+  }
   const frameSize = profile.width * profile.height * 3;
   const { proc, done } = ffmpeg([
     '-i', inputPath,
     '-f', 'rawvideo',
     '-pix_fmt', 'rgb24',
-    // Undo any rescaling the platform applied before sampling the grid.
-    '-vf', `scale=${profile.width}:${profile.height}`,
+    // Cut the grid out of whatever surrounds it, then undo any rescaling the
+    // platform applied, so the cells land where the decoder expects them.
+    '-vf', `${crop ? `crop=${crop},` : ''}scale=${profile.width}:${profile.height}`,
     'pipe:1',
   ]);
 
@@ -226,6 +239,92 @@ async function eachFrame(
 }
 
 /**
+ * Find where the carrier grid sits inside a frame that also contains something
+ * else - a browser around a player, a platform's letterboxing, a crop. The grid
+ * is saturated colour end to end while player chrome and page furniture are
+ * not, so the bounding box of strongly coloured pixels is the carrier.
+ *
+ * Returns an ffmpeg crop, or undefined when the grid already fills the frame.
+ */
+export async function detectCrop(inputPath: string, sampleFrames = 12): Promise<string | undefined> {
+  const probed = await probe(inputPath);
+  if (!probed) return undefined;
+  const { width, height } = probed;
+
+  const { proc, done } = ffmpeg([
+    '-i', inputPath,
+    '-f', 'rawvideo',
+    '-pix_fmt', 'rgb24',
+    '-frames:v', String(sampleFrames * 20),
+    'pipe:1',
+  ]);
+
+  const frameSize = width * height * 3;
+  const columns = new Float64Array(width);
+  const rows = new Float64Array(height);
+  let frames = 0;
+
+  const pending: Buffer[] = [];
+  let pendingBytes = 0;
+
+  const measure = (px: Buffer) => {
+    // Only every 20th frame: enough to average out a transient overlay.
+    if (frames++ % 20 !== 0) return;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const o = (y * width + x) * 3;
+        const r = px[o];
+        const g = px[o + 1];
+        const b = px[o + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 70) {
+          columns[x]++;
+          rows[y]++;
+        }
+      }
+    }
+  };
+
+  for await (const piece of proc.stdout) {
+    pending.push(piece as Buffer);
+    pendingBytes += (piece as Buffer).length;
+    if (pendingBytes < frameSize) continue;
+    let joined = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes);
+    pending.length = 0;
+    while (joined.length >= frameSize) {
+      measure(joined.subarray(0, frameSize));
+      joined = joined.subarray(frameSize);
+    }
+    pending.push(joined);
+    pendingBytes = joined.length;
+  }
+  await done;
+
+  const sampled = Math.max(1, Math.ceil(frames / 20));
+  const span = (counts: Float64Array, extent: number, threshold: number) => {
+    let lo = -1;
+    let hi = -1;
+    for (let i = 0; i < extent; i++) {
+      if (counts[i] < threshold) continue;
+      if (lo < 0) lo = i;
+      hi = i;
+    }
+    return [lo, hi];
+  };
+
+  const [y0, y1] = span(rows, height, sampled * width * 0.25);
+  const [x0, x1] = span(columns, width, sampled * height * 0.15);
+  if (x0 < 0 || y0 < 0) return undefined;
+
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  // Already full frame, give or take a pixel of rounding: nothing to crop.
+  if (w >= width - 2 && h >= height - 2) return undefined;
+  if (w < 64 || h < 64) return undefined;
+
+  return `${w}:${h}:${x0}:${y0}`;
+}
+
+/**
  * Video -> the original file. Every frame is tried independently and the first
  * valid copy of each chunk wins, so a changed frame rate, a dropped frame or a
  * blended transition costs nothing as long as one clean copy survives. Chunks
@@ -234,13 +333,15 @@ async function eachFrame(
 export async function decodeVideoFile(
   inputPath: string,
   profile: VideoProfile,
-  onProgress?: ProgressCallback
+  options: ReadOptions = {}
 ): Promise<DecodeResult> {
+  const { onProgress } = options;
+  const crop = options.crop === 'auto' ? await detectCrop(inputPath) : options.crop;
   const byIndex = new Map<number, EncodedChunk>();
   let framesRead = 0;
   let framesRejected = 0;
 
-  await eachFrame(inputPath, profile, (frame) => {
+  await eachFrame(inputPath, profile, crop, (frame) => {
     framesRead++;
     try {
       const chunk = parseChunk(readFrame(frame, profile).bytes);
@@ -277,6 +378,8 @@ export interface SourceInfo {
 
 export interface InspectResult {
   source?: SourceInfo;
+  /** Region the grid was read from, when it did not fill the frame. */
+  crop?: string;
   framesRead: number;
   framesReadable: number;
   /** Hamming repairs per readable frame. A high average means cells are too small. */
@@ -326,8 +429,13 @@ async function probe(inputPath: string): Promise<SourceInfo | undefined> {
   });
 }
 
-export async function inspectVideo(inputPath: string, profile: VideoProfile): Promise<InspectResult> {
+export async function inspectVideo(
+  inputPath: string,
+  profile: VideoProfile,
+  options: ReadOptions = {}
+): Promise<InspectResult> {
   const source = await probe(inputPath);
+  const crop = options.crop === 'auto' ? await detectCrop(inputPath) : options.crop;
   const chunks: EncodedChunk[] = [];
   const seen = new Set<number>();
   let framesRead = 0;
@@ -335,7 +443,7 @@ export async function inspectVideo(inputPath: string, profile: VideoProfile): Pr
   let correctionsTotal = 0;
   let correctionsMax = 0;
 
-  await eachFrame(inputPath, profile, (frame) => {
+  await eachFrame(inputPath, profile, crop, (frame) => {
     framesRead++;
     try {
       const { bytes, corrections } = readFrame(frame, profile);
@@ -373,6 +481,7 @@ export async function inspectVideo(inputPath: string, profile: VideoProfile): Pr
 
   return {
     ...(source ? { source } : {}),
+    ...(crop ? { crop } : {}),
     framesRead,
     framesReadable,
     correctionsAverage: framesReadable > 0 ? correctionsTotal / framesReadable : 0,

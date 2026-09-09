@@ -19,8 +19,11 @@ const MIME_BY_EXT: Record<string, string> = {
 const USAGE = `dbforall - store files inside video
 
   dbforall encode  <file> <out.mp4>       [--platform youtube|instagram] [--crf 14]
-  dbforall decode  <video|url> [out-file] [--platform youtube|instagram]
-  dbforall inspect <video|url>            [--platform youtube|instagram]
+  dbforall decode  <video|url> [out-file] [--platform ...] [--crop auto|w:h:x:y]
+  dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
+
+--crop auto finds the grid inside a larger frame: a screen recording of a
+player, letterboxing, anything that does not fill the frame edge to edge.
 
 decode and inspect accept a URL and fetch it with yt-dlp. Add
 --cookies-from-browser chrome (or edge, firefox) when YouTube refuses an
@@ -125,9 +128,11 @@ async function main(argv: string[]): Promise<void> {
     if (!input) throw new Error(USAGE);
 
     const result = await withVideo(input, browser, (path) =>
-      decodeVideoFile(path, profile, ({ completed, total }) =>
-        process.stderr.write(`\rrecovered chunk ${completed}/${total}`)
-      )
+      decodeVideoFile(path, profile, {
+        crop: flag(rest, 'crop'),
+        onProgress: ({ completed, total }) =>
+          process.stderr.write(`recovered chunk ${completed}/${total}`),
+      })
     );
 
     const target = output ?? result.header.fileName;
@@ -146,8 +151,11 @@ async function main(argv: string[]): Promise<void> {
     const [input] = args;
     if (!input) throw new Error(USAGE);
 
-    const r = await withVideo(input, browser, (path) => inspectVideo(path, profile));
+    const r = await withVideo(input, browser, (path) =>
+      inspectVideo(path, profile, { crop: flag(rest, 'crop') })
+    );
     const rows: [string, string][] = [];
+    if (r.crop) rows.push(['crop', `${r.crop} (grid did not fill the frame)`]);
     if (r.source) {
       const mbps = r.source.bitRate / 1_000_000;
       // Our own encoder writes around 30 Mbps. Anything near that was never
