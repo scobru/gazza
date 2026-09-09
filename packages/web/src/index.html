@@ -236,11 +236,17 @@ async function refresh() {
   let e;
   try {
     const response = await fetch('/estimate?' + query);
-    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    if (!response.ok) {
+      // The server is there and refused: show what it said, not a guess about
+      // the connection. A stale process that predates a new profile lands here.
+      const said = await response.json().catch(() => ({}));
+      throw Object.assign(new Error(said.error ?? `it answered ${response.status}`), { answered: true });
+    }
     e = await response.json();
   } catch (err) {
-    $('offline').textContent =
-      location.protocol === 'file:'
+    $('offline').textContent = err.answered
+      ? `The server refused: ${err.message}. If this is a new option, restart it: npm run web:dev`
+      : location.protocol === 'file:'
         ? 'Open this page at http://127.0.0.1:4321 rather than from disk: it needs the local server.'
         : `Cannot reach the local server (${err.message}). Start it with: npm run web:dev`;
     $('offline').hidden = false;
