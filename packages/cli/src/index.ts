@@ -22,7 +22,9 @@ const USAGE = `dbforall - store files inside video
   dbforall decode  <video|url> [out-file] [--platform youtube|instagram]
   dbforall inspect <video|url>            [--platform youtube|instagram]
 
-decode and inspect accept a URL and fetch it with yt-dlp.
+decode and inspect accept a URL and fetch it with yt-dlp. Add
+--cookies-from-browser chrome (or edge, firefox) when YouTube refuses an
+anonymous request, which it does for unlisted videos and under rate limiting.
 Encode and decode must use the same platform profile (default: youtube).
 `;
 
@@ -46,11 +48,17 @@ const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
  * Pull the highest resolution video-only stream. Audio would only be re-encoded
  * for nothing, and a downscaled stream loses the cells we came for.
  */
-function download(url: string, directory: string): Promise<string> {
+function download(url: string, directory: string, browser?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       'yt-dlp',
-      ['--no-playlist', '-f', 'bv*[height<=?1080]/bv*/b', '-o', join(directory, 'carrier.%(ext)s'), url],
+      [
+        '--no-playlist',
+        '-f', 'bv*[height<=?1080]/bv*/b',
+        ...(browser ? ['--cookies-from-browser', browser] : []),
+        '-o', join(directory, 'carrier.%(ext)s'),
+        url,
+      ],
       { stdio: ['ignore', 'inherit', 'inherit'] }
     );
     proc.on('error', (err) =>
@@ -66,12 +74,16 @@ function download(url: string, directory: string): Promise<string> {
 }
 
 /** Run `body` on a local path, fetching the URL into a temp directory first. */
-async function withVideo<T>(source: string, body: (path: string) => Promise<T>): Promise<T> {
+async function withVideo<T>(
+  source: string,
+  browser: string | undefined,
+  body: (path: string) => Promise<T>
+): Promise<T> {
   if (!isUrl(source)) return body(source);
 
   const directory = await mkdtemp(join(tmpdir(), 'dbforall-'));
   try {
-    return await body(await download(source, directory));
+    return await body(await download(source, directory, browser));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -81,6 +93,7 @@ async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   const args = positional(rest);
   const profile = profileFor(flag(rest, 'platform') ?? 'youtube');
+  const browser = flag(rest, 'cookies-from-browser');
 
   if (command === 'encode') {
     const [input, output] = args;
@@ -111,7 +124,7 @@ async function main(argv: string[]): Promise<void> {
     const [input, output] = args;
     if (!input) throw new Error(USAGE);
 
-    const result = await withVideo(input, (path) =>
+    const result = await withVideo(input, browser, (path) =>
       decodeVideoFile(path, profile, ({ completed, total }) =>
         process.stderr.write(`\rrecovered chunk ${completed}/${total}`)
       )
@@ -133,7 +146,7 @@ async function main(argv: string[]): Promise<void> {
     const [input] = args;
     if (!input) throw new Error(USAGE);
 
-    const r = await withVideo(input, (path) => inspectVideo(path, profile));
+    const r = await withVideo(input, browser, (path) => inspectVideo(path, profile));
     const rows: [string, string][] = [
       ['frames', `${r.framesRead} read, ${r.framesReadable} readable`],
       ['hamming', `${r.correctionsAverage.toFixed(1)} corrections/frame average, ${r.correctionsMax} worst`],
