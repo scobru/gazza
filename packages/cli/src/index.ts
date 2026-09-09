@@ -84,7 +84,12 @@ function download(
       reject(new Error(`Could not run yt-dlp (${err.message}). Is it installed and on PATH?`))
     );
     proc.on('close', async (code) => {
-      if (code !== 0) return reject(new Error(`yt-dlp exited ${code}`));
+      if (code !== 0) {
+        const hint = format
+          ? `. Format "${format}" may not exist for this video - list them with: yt-dlp -F "${url}"`
+          : '';
+        return reject(new Error(`yt-dlp exited ${code}${hint}`));
+      }
       const files = await readdir(directory);
       if (files.length === 0) return reject(new Error('yt-dlp downloaded nothing'));
       resolve(join(directory, files[0]));
