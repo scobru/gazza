@@ -57,10 +57,14 @@ platform serves. Capacity that does not survive was never capacity.
 re-timing 30 fps to 24 drops a fifth of the chunks and the file is gone. A
 second copy survives it; a third only adds bytes.
 
-| profile | frame | capacity | throughput |
-| --- | --- | --- | --- |
-| `youtube` | 1920x1080 | 2011 B/frame | ~30 KB per second of video |
-| `instagram` | 1080x1920 | 2031 B/frame | ~30 KB per second of video |
+| profile | frame | capacity | throughput | largest file |
+| --- | --- | --- | --- | --- |
+| `youtube` | 1920x1080 | 2011 B/frame | ~30 KB per second of video | no limit |
+| `instagram` | 1080x1920 | 2031 B/frame | ~30 KB per second of video | ~1.9 MB |
+
+Instagram caps a post at 90 seconds, which caps the file at roughly 1.9 MB.
+`encode` refuses an oversized file up front rather than spending minutes in
+x264 producing a video the platform will reject.
 
 A 150 KB file becomes 84 data chunks plus 24 parity, 216 frames, 7.2 seconds of
 video, and about 5 MB of mp4.
@@ -111,6 +115,10 @@ npm install && npm run build && npm test
 - **Not verified against a real platform.** Every number here comes from a
   local VP9 transcode standing in for the real thing. A live upload may do
   things ffmpeg does not — sharpening, cropping, overlays.
+- **Instagram is the less tested of the two.** Its geometry was measured the
+  same way as YouTube's, but a Reel goes through more than a transcode: the
+  app re-frames, and reading one back with `yt-dlp` may need cookies for
+  anything not public.
 - **No encryption.** The payload sits in the video in the clear. Anyone who
   knows the format reads it.
 - **Against the terms of service** of both platforms. The account carrying the

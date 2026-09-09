@@ -4,9 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { VideoProfile } from '@dbforall/core';
+import { INSTAGRAM_PROFILE, VideoProfile, YOUTUBE_PROFILE } from '@dbforall/core';
 import { PALETTE_8 } from '@dbforall/core';
-import { decodeVideoFile, encodeFileToVideo, inspectVideo, payloadSizeFor } from './pipeline';
+import { decodeVideoFile, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 
@@ -172,4 +172,40 @@ test('inspect names the chunks that went missing', { skip: !hasFfmpeg && 'ffmpeg
   assert.deepEqual(report.missing, [0, 1, 2, 3, 4, 5, 6]);
   assert.equal(report.recoverable, false);
   assert.match(report.reason ?? '', /too many lost in one parity group/);
+});
+
+test('a profile with no duration cap has no payload cap', () => {
+  assert.equal(maxPayloadFor(YOUTUBE_PROFILE, 'f.bin', 'application/octet-stream'), undefined);
+});
+
+test('the Instagram cap follows from its 90 second limit', () => {
+  const limit = maxPayloadFor(INSTAGRAM_PROFILE, 'f.bin', 'application/octet-stream')!;
+  const payloadSize = payloadSizeFor(INSTAGRAM_PROFILE, 'f.bin', 'application/octet-stream');
+
+  // 90 s at 30 fps, two frames per chunk, 4 of every 20 chunks spent on parity.
+  // The leftover block still pays its parity before carrying any data.
+  const chunks = Math.floor((90 * 30) / 2);
+  const spare = chunks % 20;
+  const dataChunks = Math.floor(chunks / 20) * 16 + Math.min(16, Math.max(0, spare - 4));
+  assert.equal(limit, dataChunks * payloadSize);
+  assert.ok(limit > 1_500_000 && limit < 2_500_000, `got ${limit}`);
+});
+
+test('dropping parity buys back capacity', () => {
+  const withParity = maxPayloadFor(INSTAGRAM_PROFILE, 'f.bin', 'application/octet-stream')!;
+  const without = maxPayloadFor(INSTAGRAM_PROFILE, 'f.bin', 'application/octet-stream', false)!;
+  assert.ok(without > withParity, `${without} should exceed ${withParity}`);
+});
+
+test('an oversized file is refused before ffmpeg is ever started', async () => {
+  const tiny = { ...INSTAGRAM_PROFILE, maxDurationSeconds: 2 };
+  await assert.rejects(
+    () =>
+      encodeFileToVideo(randomBytes(200000), join(dir, 'never-written.mp4'), {
+        fileName: 'f.bin',
+        mimeType: 'application/octet-stream',
+        profile: tiny,
+      }),
+    /holds \d+ B: 2 s at 30 fps/
+  );
 });

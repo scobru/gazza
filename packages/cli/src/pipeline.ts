@@ -68,6 +68,38 @@ export function payloadSizeFor(
   return payloadSize;
 }
 
+/**
+ * Largest file this profile can carry, when the platform caps video length.
+ * Instagram stops at 90 seconds, so the grid is not the only limit.
+ */
+export function maxPayloadFor(
+  profile: VideoProfile,
+  fileName: string,
+  mimeType: string,
+  parity: ParityOptions | false = {}
+): number | undefined {
+  if (profile.maxDurationSeconds === undefined) return undefined;
+
+  const { dataPerGroup, parityPerGroup } =
+    parity === false
+      ? { dataPerGroup: DEFAULT_PARITY.dataPerGroup, parityPerGroup: 0 }
+      : { ...DEFAULT_PARITY, ...parity };
+
+  const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
+  const frames = Math.floor(profile.maxDurationSeconds * profile.fps);
+  const chunks = Math.floor(frames / profile.repeatFrames);
+
+  // Chunks travel in blocks of dataPerGroup + parityPerGroup; a partial block
+  // still pays for its parity before it carries any data.
+  const perBlock = dataPerGroup + parityPerGroup;
+  const wholeBlocks = Math.floor(chunks / perBlock);
+  const spare = chunks % perBlock;
+  const dataChunks =
+    wholeBlocks * dataPerGroup + Math.min(dataPerGroup, Math.max(0, spare - parityPerGroup));
+
+  return dataChunks * payloadSize;
+}
+
 function write(stream: Writable, data: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
     stream.write(data, (err) => (err ? reject(err) : resolve()));
@@ -101,6 +133,15 @@ export async function encodeFileToVideo(
   const { fileName, mimeType, profile, crf = 14, parity = {}, onProgress } = options;
   const dataPerGroup = (parity === false ? undefined : parity.dataPerGroup) ?? DEFAULT_PARITY.dataPerGroup;
   const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
+
+  // Fail before spending minutes in x264 on a video the platform will refuse.
+  const limit = maxPayloadFor(profile, fileName, mimeType, parity);
+  if (limit !== undefined && data.length > limit) {
+    throw new Error(
+      `File is ${data.length} B but the ${profile.platform} profile holds ${limit} B: ` +
+        `${profile.maxDurationSeconds} s at ${profile.fps} fps. Split the file or use another platform.`
+    );
+  }
   const dataChunks = await chunkFile(data, { fileName, mimeType, payloadSize });
   const parityChunks = parity === false ? [] : buildParityChunks(dataChunks, parity);
   const chunks = [...dataChunks, ...parityChunks];

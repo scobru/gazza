@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { profileFor } from '@dbforall/core';
-import { decodeVideoFile, encodeFileToVideo, inspectVideo, payloadSizeFor } from './pipeline';
+import { decodeVideoFile, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
 
 const MIME_BY_EXT: Record<string, string> = {
   '.pdf': 'application/pdf',
