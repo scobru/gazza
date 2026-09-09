@@ -56,13 +56,35 @@
   }
   a.part:hover { border-color: var(--accent); }
   a.part span { color: var(--dim); font-variant-numeric: tabular-nums; }
+  nav { display: flex; gap: .4rem; margin-bottom: 1.75rem; }
+  nav button {
+    margin: 0; width: auto; flex: 0 0 auto; padding: .45rem 1rem; font-size: .9rem;
+    background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 8px;
+  }
+  nav button[aria-selected=true] { background: var(--panel); color: var(--text); border-color: var(--accent); }
+  textarea {
+    width: 100%; min-height: 5.5rem; resize: vertical; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; padding: .7rem .8rem; font: inherit; font-size: .9rem;
+  }
+  input[type=password] {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: .5rem .6rem; font: inherit; font-size: .9rem; min-width: 11rem;
+  }
+  .note { color: var(--dim); font-size: .85rem; margin: .6rem 0 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
   <h1>dbforall</h1>
-  <p>Turn a file into a video a platform will host for you.</p>
+  <p>Turn a file into a video a platform will host for you, and back again.</p>
+
+  <nav>
+    <button id="tabEncode" aria-selected="true">Encode</button>
+    <button id="tabDecode" aria-selected="false">Decode</button>
+  </nav>
+
+  <div id="paneEncode">
 
   <label class="drop" id="drop">
     <input type="file" id="file">
@@ -109,6 +131,42 @@
     <div id="parts"></div>
     <p class="warn" id="error" hidden></p>
   </section>
+  </div>
+
+  <div id="paneDecode" hidden>
+    <label class="drop" id="dropVideos">
+      <input type="file" id="videos" accept="video/*" multiple>
+      <strong id="videosTitle">Choose the carrier videos</strong>
+      <span id="videosHint">or drag them here &mdash; several parts at once is fine</span>
+    </label>
+
+    <p class="note">Or paste the links, one per line:</p>
+    <textarea id="urls" placeholder="https://youtu.be/..."></textarea>
+
+    <fieldset>
+      <label>Platform
+        <select id="platformDecode">
+          <option value="youtube">YouTube</option>
+          <option value="instagram">Instagram</option>
+          <option value="telegram">Telegram</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+      </label>
+      <label>Password
+        <input type="password" id="password" placeholder="only if it was sealed" autocomplete="off">
+      </label>
+    </fieldset>
+
+    <button id="goDecode">Decode</button>
+    <progress id="barDecode" hidden></progress>
+
+    <section class="panel" id="resultDecode" hidden>
+      <h2>Recovered</h2>
+      <div id="recovered"></div>
+      <dl id="decodeStats"></dl>
+      <p class="warn" id="errorDecode" hidden></p>
+    </section>
+  </div>
 </main>
 
 <script>
@@ -146,7 +204,12 @@ window.addEventListener('dragleave', (e) => {
 window.addEventListener('drop', (e) => {
   e.preventDefault();
   $('drop').classList.remove('over');
-  if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+  // Whichever pane is open decides what a dropped file means.
+  if (!$('paneDecode').hidden) {
+    if (e.dataTransfer.files.length) pickCarriers(e.dataTransfer.files);
+  } else if (e.dataTransfer.files[0]) {
+    pick(e.dataTransfer.files[0]);
+  }
 });
 $('platform').addEventListener('change', refresh);
 $('split').addEventListener('change', refresh);
@@ -197,6 +260,99 @@ async function refresh() {
   $('go').disabled = over;
 }
 
+// --- tabs ---------------------------------------------------------------
+function showTab(which) {
+  const encoding = which === 'encode';
+  $('tabEncode').setAttribute('aria-selected', String(encoding));
+  $('tabDecode').setAttribute('aria-selected', String(!encoding));
+  $('paneEncode').hidden = !encoding;
+  $('paneDecode').hidden = encoding;
+}
+$('tabEncode').addEventListener('click', () => showTab('encode'));
+$('tabDecode').addEventListener('click', () => showTab('decode'));
+
+// --- decoding -----------------------------------------------------------
+let carriers = [];
+
+function pickCarriers(files) {
+  carriers = [...files];
+  $('videosTitle').textContent =
+    carriers.length === 1 ? carriers[0].name : carriers.length + ' videos';
+  $('videosHint').textContent = humanBytes(carriers.reduce((n, f) => n + f.size, 0));
+}
+
+$('videos').addEventListener('change', (e) => e.target.files.length && pickCarriers(e.target.files));
+
+/** Read a newline-delimited JSON response, handing each event to onEvent. */
+async function readEvents(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) if (line) onEvent(JSON.parse(line));
+  }
+}
+
+$('goDecode').addEventListener('click', async () => {
+  const urls = $('urls').value.split('\n').map((u) => u.trim()).filter(Boolean);
+  if (carriers.length === 0 && urls.length === 0) return;
+
+  $('goDecode').disabled = true;
+  $('barDecode').hidden = false;
+  $('barDecode').removeAttribute('value');
+  $('resultDecode').hidden = true;
+  $('errorDecode').hidden = true;
+  $('recovered').innerHTML = '';
+  $('decodeStats').innerHTML = '';
+
+  try {
+    const { id } = await (await fetch('/decode/job', { method: 'POST' })).json();
+    for (const file of carriers) {
+      await fetch('/decode/upload?job=' + id, { method: 'POST', body: file });
+    }
+
+    const query = new URLSearchParams({ job: id, platform: $('platformDecode').value });
+    if ($('password').value) query.set('password', $('password').value);
+    for (const url of urls) query.append('url', url);
+
+    const response = await fetch('/decode?' + query, { method: 'POST' });
+    await readEvents(response, (event) => {
+      if (event.error) {
+        $('errorDecode').textContent = event.error;
+        $('errorDecode').hidden = false;
+        $('resultDecode').hidden = false;
+      } else if (event.done) {
+        const a = document.createElement('a');
+        a.className = 'part';
+        a.href = '/recovered/' + id + '?name=' + encodeURIComponent(event.name);
+        a.download = event.name;
+        a.innerHTML = '<span>' + event.name + '</span><span>' + humanBytes(event.bytes) + '</span>';
+        $('recovered').appendChild(a);
+        $('decodeStats').innerHTML =
+          '<dt>Frames</dt><dd>' + event.framesRead + ' read, ' + event.framesRejected + ' unreadable</dd>' +
+          '<dt>Parity</dt><dd>' + (event.recovered ? event.recovered + ' chunks rebuilt' : 'never needed') + '</dd>';
+        $('resultDecode').hidden = false;
+      } else if (event.phase === 'decode') {
+        $('barDecode').max = event.total;
+        $('barDecode').value = event.completed;
+      }
+    });
+  } catch (err) {
+    $('errorDecode').textContent = err.message;
+    $('errorDecode').hidden = false;
+    $('resultDecode').hidden = false;
+  } finally {
+    $('barDecode').hidden = true;
+    $('goDecode').disabled = false;
+  }
+});
+
+// --- encoding -----------------------------------------------------------
 $('go').addEventListener('click', async () => {
   if (!chosen) return;
   $('go').disabled = true;

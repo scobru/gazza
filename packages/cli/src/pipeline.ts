@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import {
   ChunkHeader,
@@ -127,6 +129,56 @@ function ffmpeg(args: string[]) {
   });
   return { proc, done, stderr: () => stderr };
 }
+
+/**
+ * Pull the least damaged video-only stream: highest resolution first, then
+ * highest bitrate. Audio would only be re-encoded for nothing.
+ *
+ * No resolution cap. An earlier version preferred height <= 1080, which reads
+ * as sensible until the carrier is portrait: Instagram's 720x1280 rendition is
+ * 1280 tall, so the cap rejected it and took the 360x640 one instead - a 3x
+ * downscale that shrank 12 px cells to 4 px and lost the file. A platform never
+ * serves more pixels than were uploaded, so more is always better.
+ *
+ * The bitrate tiebreak matters on YouTube, which offers the same upload as h264
+ * and as AV1: AV1 at a similar bitrate destroys far more of the grid.
+ */
+export function downloadVideo(
+  url: string,
+  directory: string,
+  browser?: string,
+  format?: string
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      'yt-dlp',
+      [
+        '--no-playlist',
+        '-f', format ?? 'bv*/b',
+        ...(format ? [] : ['-S', 'res,br']),
+        ...(browser ? ['--cookies-from-browser', browser] : []),
+        '-o', join(directory, 'carrier.%(ext)s'),
+        url,
+      ],
+      { stdio: ['ignore', 'inherit', 'inherit'] }
+    );
+    proc.on('error', (err) =>
+      reject(new Error(`Could not run yt-dlp (${err.message}). Is it installed and on PATH?`))
+    );
+    proc.on('close', async (code) => {
+      if (code !== 0) {
+        const hint = format
+          ? `. Format "${format}" may not exist for this video - list them with: yt-dlp -F "${url}"`
+          : '';
+        return reject(new Error(`yt-dlp exited ${code}${hint}`));
+      }
+      const files = await readdir(directory);
+      if (files.length === 0) return reject(new Error('yt-dlp downloaded nothing'));
+      resolve(join(directory, files[0]));
+    });
+  });
+}
+
 
 /** Name part n of a split carrier: carrier.mp4 -> carrier-001.mp4 */
 function partPath(outputPath: string, index: number): string {

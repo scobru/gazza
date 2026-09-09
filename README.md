@@ -112,16 +112,21 @@ ffmpeg - only driven from a page.
 npm run web:dev      # http://127.0.0.1:4321
 ```
 
-Choose a file, pick a platform, and it says how long the video will run, roughly
-how large it will be and how many chunks it takes *before* encoding anything. If
-the result would exceed what a platform accepts per video, it says so and offers
-to split rather than letting you find out after the upload.
+**Encode.** Choose a file, pick a platform, and it says how long the video will
+run, roughly how large it will be and how many chunks it takes *before* encoding
+anything. If the result would exceed what a platform accepts per video, it says
+so and offers to split rather than letting you find out after the upload.
+
+**Decode.** Paste the links, one per line, or drop the carrier videos - several
+parts at once is fine. If the first attempt finds no grid it retries looking for
+one inside the frame, which covers a screen recording or a platform that
+letterboxed the upload. A sealed carrier asks for its password.
 
 The server binds to loopback only: it reads file contents and shells out to
 ffmpeg, so it has no business being reachable from the network.
 
-Encoding only, for now. Decoding, sealing and reading a URL stay on the command
-line.
+Sealing on encode stays on the command line, where the password is not typed
+into a page.
 
 ## Commands
 

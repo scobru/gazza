@@ -1,10 +1,10 @@
 import { createReadStream } from 'node:fs';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { DEFAULT_PARITY, VideoProfile, frameGeometry, profileFor } from '@dbforall/core';
-import { encodeFileToVideo, payloadSizeFor } from '@dbforall/cli/dist/pipeline';
+import { DEFAULT_PARITY, VideoProfile, frameGeometry, isSealed, open as unseal, profileFor } from '@dbforall/core';
+import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@dbforall/cli/dist/pipeline';
 
 const PORT = Number(process.env.PORT ?? 4321);
 const PAGE = join(__dirname, '..', 'src', 'index.html');
@@ -128,6 +128,71 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
   }
 }
 
+/** A decode in the making: uploaded parts and fetched URLs land in one directory. */
+const jobs = new Map<string, { directory: string; files: string[] }>();
+
+async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  const job = jobs.get(url.searchParams.get('job') ?? '');
+  if (!job) return json(res, 404, { error: 'Unknown decode job' });
+
+  const profile = profileFor(url.searchParams.get('platform') ?? 'youtube');
+  const password = url.searchParams.get('password') ?? '';
+  const urls = url.searchParams.getAll('url').filter(Boolean);
+
+  res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
+  const send = (event: unknown) => res.write(`${JSON.stringify(event)}
+`);
+
+  try {
+    for (const [i, source] of urls.entries()) {
+      send({ phase: 'fetch', completed: i, total: urls.length });
+      const into = join(job.directory, `url-${i}`);
+      await mkdir(into, { recursive: true });
+      job.files.push(await downloadVideo(source, into));
+    }
+    if (job.files.length === 0) throw new Error('No video to decode: add a link or a file');
+
+    const read = { crop: undefined as string | undefined, onProgress: (u: { completed: number; total: number }) => send({ phase: 'decode', ...u }) };
+    let result;
+    try {
+      result = await decodeVideos(job.files, profile, read);
+    } catch (first) {
+      // A screen recording, letterboxing or a player that was not fullscreen:
+      // the grid is in there but not filling the frame. Worth one more try.
+      send({ phase: 'retry', message: 'looking for the grid inside the frame' });
+      try {
+        result = await decodeVideos(job.files, profile, { ...read, crop: 'auto' });
+      } catch {
+        throw first;
+      }
+    }
+
+    let payload = result.data;
+    let name = result.header.fileName;
+    if (isSealed(payload)) {
+      if (!password) throw new Error('This carrier is sealed: enter its password');
+      const opened = await unseal(payload, password);
+      payload = opened.data;
+      name = opened.fileName;
+    }
+
+    const recovered = join(job.directory, 'recovered');
+    await writeFile(recovered, payload);
+    send({
+      done: true,
+      name,
+      bytes: payload.length,
+      framesRead: result.framesRead,
+      framesRejected: result.framesRejected,
+      recovered: result.recovered.length,
+    });
+    res.end();
+  } catch (error) {
+    send({ error: (error as Error).message });
+    res.end();
+  }
+}
+
 async function handleDownload(res: ServerResponse, id: string, index: number): Promise<void> {
   const entry = ready.get(id);
   const path = entry?.parts[index];
@@ -167,6 +232,41 @@ const server = createServer(async (req, res) => {
       return await handleEncode(req, res, url);
     }
 
+    if (req.method === 'POST' && url.pathname === '/decode/job') {
+      const directory = await mkdtemp(join(tmpdir(), 'dbforall-job-'));
+      const id = basename(directory);
+      jobs.set(id, { directory, files: [] });
+      return json(res, 200, { id });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/decode/upload') {
+      const job = jobs.get(url.searchParams.get('job') ?? '');
+      if (!job) return json(res, 404, { error: 'Unknown decode job' });
+      const path = join(job.directory, `part-${job.files.length}.mp4`);
+      await writeFile(path, await readBody(req));
+      job.files.push(path);
+      return json(res, 200, { files: job.files.length });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/decode') {
+      return await handleDecode(req, res, url);
+    }
+
+    const recovered = url.pathname.match(/^\/recovered\/([^/]+)$/);
+    if (req.method === 'GET' && recovered) {
+      const job = jobs.get(recovered[1]);
+      if (!job) return json(res, 404, { error: 'Unknown decode job' });
+      const path = join(job.directory, 'recovered');
+      const { size } = await stat(path);
+      const name = url.searchParams.get('name') ?? 'recovered.bin';
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-length': size,
+        'content-disposition': `attachment; filename="${basename(name)}"`,
+      });
+      return void createReadStream(path).pipe(res);
+    }
+
     const download = url.pathname.match(/^\/download\/([^/]+)\/(\d+)$/);
     if (req.method === 'GET' && download) {
       return await handleDownload(res, download[1], Number(download[2]));
@@ -185,7 +285,8 @@ server.listen(PORT, '127.0.0.1', () => {
 });
 
 const cleanup = async () => {
-  await Promise.all([...ready.values()].map((e) => rm(e.directory, { recursive: true, force: true })));
+  const directories = [...ready.values(), ...jobs.values()].map((e) => e.directory);
+  await Promise.all(directories.map((d) => rm(d, { recursive: true, force: true })));
   process.exit(0);
 };
 process.on('SIGINT', cleanup);

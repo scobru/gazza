@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@dbforall/core';
-import { decodeVideos, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
+import {
+  decodeVideos,
+  downloadVideo,
+  encodeFileToVideo,
+  inspectVideo,
+  maxPayloadFor,
+  payloadSizeFor,
+} from './pipeline';
 
 const MIME_BY_EXT: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -93,55 +99,6 @@ function askPassword(prompt: string): Promise<string> {
 
 const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
-/**
- * Pull the least damaged video-only stream: highest resolution first, then
- * highest bitrate. Audio would only be re-encoded for nothing.
- *
- * No resolution cap. An earlier version preferred height <= 1080, which reads
- * as sensible until the carrier is portrait: Instagram's 720x1280 rendition is
- * 1280 tall, so the cap rejected it and took the 360x640 one instead - a 3x
- * downscale that shrank 12 px cells to 4 px and lost the file. A platform never
- * serves more pixels than were uploaded, so more is always better.
- *
- * The bitrate tiebreak matters on YouTube, which offers the same upload as h264
- * and as AV1: AV1 at a similar bitrate destroys far more of the grid.
- */
-function download(
-  url: string,
-  directory: string,
-  browser?: string,
-  format?: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(
-      'yt-dlp',
-      [
-        '--no-playlist',
-        '-f', format ?? 'bv*/b',
-        ...(format ? [] : ['-S', 'res,br']),
-        ...(browser ? ['--cookies-from-browser', browser] : []),
-        '-o', join(directory, 'carrier.%(ext)s'),
-        url,
-      ],
-      { stdio: ['ignore', 'inherit', 'inherit'] }
-    );
-    proc.on('error', (err) =>
-      reject(new Error(`Could not run yt-dlp (${err.message}). Is it installed and on PATH?`))
-    );
-    proc.on('close', async (code) => {
-      if (code !== 0) {
-        const hint = format
-          ? `. Format "${format}" may not exist for this video - list them with: yt-dlp -F "${url}"`
-          : '';
-        return reject(new Error(`yt-dlp exited ${code}${hint}`));
-      }
-      const files = await readdir(directory);
-      if (files.length === 0) return reject(new Error('yt-dlp downloaded nothing'));
-      resolve(join(directory, files[0]));
-    });
-  });
-}
-
 /** Run `body` on local paths, fetching any URLs into a temp directory first. */
 async function withVideos<T>(
   sources: string[],
@@ -161,7 +118,7 @@ async function withVideos<T>(
       }
       const into = join(directory, String(i));
       await mkdir(into, { recursive: true });
-      paths.push(await download(source, into, browser, format));
+      paths.push(await downloadVideo(source, into, browser, format));
     }
     return await body(paths);
   } finally {
