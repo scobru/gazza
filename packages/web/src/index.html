@@ -87,6 +87,8 @@
     </label>
   </fieldset>
 
+  <p class="warn" id="offline" hidden></p>
+
   <section class="panel" id="preview" hidden>
     <h2>Before you commit</h2>
     <dl>
@@ -129,14 +131,19 @@ function pick(file) {
 }
 
 $('file').addEventListener('change', (e) => e.target.files[0] && pick(e.target.files[0]));
+
+// Catch drags over the whole window, not just the dashed box. Missing it by a
+// few pixels would otherwise let the browser navigate away and open the file,
+// which reads as "the upload does nothing".
 for (const type of ['dragenter', 'dragover']) {
-  $('drop').addEventListener(type, (e) => { e.preventDefault(); $('drop').classList.add('over'); });
+  window.addEventListener(type, (e) => { e.preventDefault(); $('drop').classList.add('over'); });
 }
-for (const type of ['dragleave', 'drop']) {
-  $('drop').addEventListener(type, () => $('drop').classList.remove('over'));
-}
-$('drop').addEventListener('drop', (e) => {
+window.addEventListener('dragleave', (e) => {
+  if (!e.relatedTarget) $('drop').classList.remove('over');
+});
+window.addEventListener('drop', (e) => {
   e.preventDefault();
+  $('drop').classList.remove('over');
   if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
 });
 $('platform').addEventListener('change', refresh);
@@ -151,7 +158,24 @@ async function refresh() {
   });
   if ($('split').value) query.set('split', $('split').value);
 
-  const e = await (await fetch('/estimate?' + query)).json();
+  // Without this the page fails silently when it is opened straight off disk
+  // or the server is not running: choosing a file simply does nothing.
+  let e;
+  try {
+    const response = await fetch('/estimate?' + query);
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    e = await response.json();
+  } catch (err) {
+    $('offline').textContent =
+      location.protocol === 'file:'
+        ? 'Open this page at http://127.0.0.1:4321 rather than from disk: it needs the local server.'
+        : `Cannot reach the local server (${err.message}). Start it with: npm run web:dev`;
+    $('offline').hidden = false;
+    $('preview').hidden = true;
+    $('go').disabled = true;
+    return;
+  }
+  $('offline').hidden = true;
   if (e.error) return;
 
   $('pDuration').textContent = humanTime(e.seconds);
