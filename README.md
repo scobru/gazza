@@ -5,10 +5,24 @@ bytes. The file becomes a grid of coloured cells; the grid survives the
 platform's re-encode; the video comes back and the file comes out byte for byte.
 
 ```bash
-dbforall encode report.pdf carrier.mp4          # file  -> video
+dbforall encode report.pdf carrier.mp4 --encrypt
 # upload carrier.mp4 by hand, then:
-dbforall decode https://youtu.be/VIDEO_ID       # video -> file
+dbforall decode https://youtu.be/VIDEO_ID
 ```
+
+Verified end to end on YouTube, WhatsApp and Telegram. The numbers below are
+measurements, not estimates, and where something has not been verified this
+README says so.
+
+## What it costs
+
+| profile | frame | per frame | throughput | overhead |
+| --- | --- | --- | --- | --- |
+| `youtube` | 1920x1080 | 1114 B | ~16 KB per second of video | ~190x |
+| `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | ~100x |
+
+A 400 KB file becomes 37 seconds of 1080p and about 78 MB of mp4. This is
+storage for documents and small archives, not for media libraries.
 
 ## How it holds together
 
@@ -30,99 +44,91 @@ carries, and Hamming(7,4) repairs only one bit per symbol. Bit *j* of every
 symbol is written before bit *j+1* of any of them, so a ruined compression block
 becomes one repairable bit per symbol instead of one dead symbol.
 
-**Parity.** Data chunks are grouped 16 at a time with 4 parity chunks each. Any
-4 of every 20 chunks may vanish entirely. Without this, one lost chunk lost the
-file.
+**Parity.** Data chunks are grouped 16 at a time with 4 parity chunks each, so
+any 4 of every 20 may vanish entirely. Without it, one lost chunk lost the file.
+The generator matrix is Cauchy, not Vandermonde: erasure decoding inverts
+whichever rows survived, and only a Cauchy matrix is invertible in *every*
+square submatrix. A Vandermonde one fails on particular loss patterns with the
+parity sitting right there.
 
-## Profiles
-
-The defaults are measured, not guessed. Each candidate was encoded, pushed
-through a VP9 transcode at a capped bitrate, and decoded again.
-
-| geometry | capacity | survives down to |
-| --- | --- | --- |
-| 1080p, palette 8, cell 8 px | 6840 B/frame | dies at 2 Mbps |
-| 1080p, palette 8, cell 12 px | 3017 B/frame | dies at 2 Mbps |
-| 1080p, palette 4, cell 10 px | 2907 B/frame | dies at 1 Mbps |
-| **1080p, palette 4, cell 12 px** | **2011 B/frame** | **300 kbps** |
-| 1080p, palette 4, cell 14 px | 1467 B/frame | 300 kbps |
-
-Two things came out of that. Chroma is the bottleneck, not luminance: 4:2:0
-subsampling halves the colour resolution, so four separated colours beat eight
-at the same cell size. And the failure is a cliff, not a slope — 10 px cells
-fail everywhere, 12 px survive a bitrate an order of magnitude below what either
-platform serves. Capacity that does not survive was never capacity.
-
-`repeatFrames: 2` is measured the same way. With one frame per chunk, a platform
-re-timing 30 fps to 24 drops a fifth of the chunks and the file is gone. A
-second copy survives it; a third only adds bytes.
-
-### Measured on real platforms
-
-Two round trips through platforms that actually re-encode, decoded byte for
-byte with the `youtube` profile:
+## Measured on real platforms
 
 | platform | came back as | corrections | chunks lost | result |
 | --- | --- | --- | --- | --- |
-| WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | Telegram | 1280x720 h264, 5.8 Mbps | 0.0 per frame | none | identical |
+| WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | failed, at 12 px cells |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per frame | none | identical, at 16 px cells |
 
-WhatsApp downscaled by 2.26x, well past the 12 px cell threshold measured
-above, and the file still came back. Rescaling is linear, so a cell's average
-colour survives shrinking as long as it stays above roughly 3 pixels — what
+WhatsApp downscaled by 2.26x, well past the cell size the local tests said was
+needed, and the file still came back. Rescaling is linear, so a cell's average
+colour survives shrinking as long as it stays above roughly three pixels: what
 matters is the cell size at encode time, not in the file that comes back.
 
-YouTube is the harsh one, and it broke the profile. A real upload comes back as
-**AV1 at 4 Mbps**, and AV1 destroys far more than VP9 does at the same bitrate -
-which is what the simulated transcodes had been measuring. At 12 px cells, 22
-frames of 560 were unreadable, 9 chunks of 280 were gone, and one parity group
-lost both data and the parity that would have covered it. The file did not come
-back.
+YouTube is the harsh one, and it broke the first profile. A real upload can come
+back as **AV1 at 4 Mbps**, and AV1 destroys far more than VP9 at the same
+bitrate - which is what the early simulated transcodes had been measuring. At
+12 px cells, 22 frames of 560 were unreadable, 9 chunks of 280 were gone, one
+parity group lost both its data and the parity meant to cover it, and the file
+did not come back.
 
-Re-measured against AV1 at 4 Mbps, cells of 16 px bring the damage back down to
-0.5 corrections per frame, so that is what the `youtube` profile now uses. It
-costs 45% of the capacity. A second real upload at 16 px came back byte for
-byte: 1104 frames, all readable, no corrections, parity never needed.
+Re-measured against AV1 at 4 Mbps:
 
-That second round trip came back as h264 rather than AV1, so it does not by
-itself retire the AV1 result - it confirms the retuned profile against the
-gentler of the two streams YouTube serves. The 16 px sizing rests on the local
-AV1 measurement.
+| cells | per frame | corrections | unreadable |
+| --- | --- | --- | --- |
+| 12 px | 2011 B | 4.2 per frame | 4 in 92 |
+| 14 px | 1467 B | 2.8 per frame | none |
+| 16 px | 1114 B | 0.5 per frame | 4 in 172 |
 
-The lesson generalises: a codec is not a bitrate. Measuring against the wrong
-codec flattered the profile by more than a factor of two.
+Hence 16 px on YouTube, at 45% of the capacity. A second real upload at 16 px
+came back byte for byte: 1104 frames, all readable, no corrections, parity never
+needed.
 
-| profile | frame | capacity | throughput | largest file |
-| --- | --- | --- | --- | --- |
-| `youtube` | 1920x1080 | 1114 B/frame | ~17 KB per second of video | no limit |
-| `instagram` | 1080x1920 | 2031 B/frame | ~30 KB per second of video | ~1.9 MB |
-
-Instagram caps a post at 90 seconds, which caps the file at roughly 1.9 MB.
-`encode` refuses an oversized file up front rather than spending minutes in
-x264 producing a video the platform will reject.
-
-A 150 KB file becomes about 150 data chunks plus parity on the YouTube profile,
-roughly 12 seconds of video.
+**A codec is not a bitrate.** Measuring against the wrong one flattered the
+profile by more than a factor of two.
 
 ## Commands
 
 ```bash
-dbforall encode  <file> <out.mp4>       [--platform youtube|instagram] [--crf 14]
-dbforall decode  <video|url> [out-file] [--platform youtube|instagram]
-dbforall inspect <video|url>            [--platform youtube|instagram]
+dbforall encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
+dbforall decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
+dbforall inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
 ```
 
-## Splitting
+Encode and decode must use the same platform profile (default: `youtube`). The
+original file name and MIME type travel inside the chunks, so `decode` with no
+output path restores the name.
 
-At roughly 17 KB per second of video, a large file makes an unwieldy one.
+`decode` and `inspect` accept URLs and fetch them with `yt-dlp`, taking the
+highest bitrate stream at 1080p or under. Add `--cookies-from-browser firefox`
+when YouTube refuses an anonymous request, which it does for unlisted videos and
+under rate limiting. `--stream <id>` forces one specific format.
+
+### Encryption
+
+`--encrypt` seals the file with AES-256-GCM before it becomes chunks. The
+password never appears as an argument, where the shell history and the process
+list would both keep a copy: it is asked for on the terminal without echo, or
+read from `DBFORALL_PASSWORD` for scripts.
+
+The file name and MIME type travel *inside* the ciphertext and the chunk headers
+carry `sealed.dbfa` instead, so a carrier on a public platform gives up neither
+the contents nor what they were called. The key is PBKDF2-HMAC-SHA256 over
+600,000 rounds: a carrier can be downloaded by anyone and attacked offline for
+as long as they like, so the only defence is making each guess expensive. GCM
+authenticates, so a wrong password and tampered bytes fail identically and
+nothing partial is ever written.
+
+There is no recovery. Lose the password and the file is gone.
+
+### Splitting
+
 `--split <seconds>` cuts the carrier into `carrier-001.mp4`, `carrier-002.mp4`
 and so on, and Instagram's 90 second cap splits automatically.
 
-No manifest is written and none is needed. Every chunk header already carries
-the file hash, its own index and the total, so the parts identify themselves:
-hand them back in any order, duplicated or not, and they reassemble.
+No manifest is written and none is needed: every chunk header already carries
+the file hash, its own index and the total, so the parts identify themselves.
+Hand them back in any order, duplicated or not, and they reassemble.
 
 ```bash
 dbforall encode archive.zip carrier.mp4 --split 60
@@ -133,33 +139,10 @@ Chunks from a different file are rejected on sight rather than quietly ignored:
 they share the same indices, so treating them as duplicates would decode the
 wrong file without a word.
 
-## Encryption
-
-`--encrypt` seals the file with AES-256-GCM before it becomes chunks. The
-password never appears as an argument, where the shell history and the process
-list would both keep a copy: it is asked for on the terminal, or read from
-`DBFORALL_PASSWORD` for scripts.
-
-The file name and MIME type travel *inside* the ciphertext, and the chunk
-headers carry `sealed.dbfa` instead, so a carrier on a public platform gives up
-neither the contents nor what they were called. Decoding asks for the password
-and restores the original name.
-
-The key is PBKDF2-HMAC-SHA256 over 600,000 rounds: a carrier can be downloaded
-by anyone and attacked offline for as long as they like, so the only defence is
-making each guess expensive. GCM authenticates, so a wrong password and tampered
-bytes fail identically and nothing partial is ever written.
-
-There is no recovery. Lose the password and the file is gone.
-
-## Commands, continued
-
-Encode and decode must use the same platform profile. `decode` and `inspect`
-accept a URL and fetch it with `yt-dlp`; the original file name and MIME type
-travel inside the chunks, so `decode` with no output path restores the name.
+### Diagnosing a failure
 
 `inspect` reads a video without reassembling anything and reports how close to
-the edge it ran. Reach for it when a real upload fails to decode:
+the edge it ran:
 
 ```
 frames    168 read, 168 readable
@@ -169,13 +152,24 @@ missing   0, 1, 2, 3
 verdict   file is recoverable
 ```
 
-That is a real carrier after a VP9 transcode at 600 kbps, re-timed to 24 fps,
-with its first frames cut off: four chunks gone, rebuilt from parity, file
-intact. A clean carrier reports 0.0 corrections and nothing missing.
+- A **high correction average** means the cells were too small for that
+  platform: raise `cellSize`.
+- **Chunks in `missing`** mean frames went away instead: raise `repeatFrames` or
+  `parityPerGroup`. The error says which of the two a parity group ran out of.
+- **`looks untouched`** on the source line means the bitrate is still near our
+  own encoder's, so no platform ever re-encoded the file - a round trip that
+  proves nothing.
+- **Nothing decoded at all** usually means the grid does not fill the frame.
+  `--crop auto` finds it inside a screen recording, letterboxing, or a player
+  that was not fullscreen.
 
-A high correction average means the cells were too small for that platform —
-raise `cellSize`. Chunks in `missing` mean frames went away instead — raise
-`repeatFrames` or `parityPerGroup`.
+## Uploading
+
+Upload the file as it is. If the platform offers cropping, filters or
+stabilisation, skip all of it: a crop moves the grid and no amount of error
+correction brings it back. Wait for the full resolution version to finish
+processing before reading it back - immediately after an upload only a
+downscaled rendition exists, and the cells do not survive it.
 
 ## Requirements
 
@@ -185,18 +179,28 @@ raise `cellSize`. Chunks in `missing` mean frames went away instead — raise
 npm install && npm run build && npm test
 ```
 
+## Layout
+
+```
+packages/core/  chunk.ts     binary chunk format, split and assemble
+                frame.ts     optical grid, calibration, interleaving
+                profiles.ts  measured platform profiles
+                groups.ts    Reed-Solomon across chunks
+                box.ts       AES-256-GCM sealing
+                crc32, hamming, reedsolomon, palette
+packages/cli/   pipeline.ts  ffmpeg streaming, crop detection, inspection
+                index.ts     the command line
+```
+
 ## Limits
 
+- **The 16 px YouTube profile has not made a full AV1 round trip.** It comes
+  from reproducing AV1 at 4 Mbps locally after a real upload failed at 12 px;
+  the successful upload that followed came back as h264. YouTube generates AV1
+  renditions late and not for every video.
+- **Instagram rests on VP9 measurements**, the same yardstick that flattered
+  YouTube, and no real Reel has confirmed it. Treat its capacity as provisional.
 - **Upload is manual.** The tool writes an mp4; putting it on a platform and
   getting the URL back is your job. Only downloading is automated.
-- **The YouTube profile has not been re-verified end to end.** The 16 px cells
-  come from reproducing AV1 at 4 Mbps locally after a real upload failed at
-  12 px; the corrected profile has not itself made the full round trip yet.
-- **Instagram rests on VP9 measurements**, the same yardstick that flattered
-  YouTube. Treat its capacity as provisional until a real Reel confirms it.
-- **Instagram is the less tested of the two.** Its geometry was measured the
-  same way as YouTube's, but a Reel goes through more than a transcode: the
-  app re-frames, and reading one back with `yt-dlp` may need cookies for
-  anything not public.
 - **Against the terms of service** of both platforms. The account carrying the
   data can be removed, and with it the data.
