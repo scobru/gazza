@@ -267,7 +267,16 @@ export async function decodeVideoFile(
   };
 }
 
+export interface SourceInfo {
+  width: number;
+  height: number;
+  codec: string;
+  /** Bits per second. Near the encoder's own rate means nothing re-encoded it. */
+  bitRate: number;
+}
+
 export interface InspectResult {
+  source?: SourceInfo;
   framesRead: number;
   framesReadable: number;
   /** Hamming repairs per readable frame. A high average means cells are too small. */
@@ -289,7 +298,36 @@ export interface InspectResult {
  * correction counts say whether the cells were too small for that platform,
  * and the missing list says whether frames went missing instead.
  */
+async function probe(inputPath: string): Promise<SourceInfo | undefined> {
+  return new Promise((resolve) => {
+    const proc = spawn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height,codec_name',
+      '-show_entries', 'format=bit_rate',
+      '-of', 'default=nw=1',
+      inputPath,
+    ]);
+    let out = '';
+    proc.stdout.on('data', (d) => (out += d));
+    proc.on('error', () => resolve(undefined));
+    proc.on('close', () => {
+      const field = (name: string) => out.match(new RegExp(`^${name}=(.*)$`, 'm'))?.[1];
+      const width = Number(field('width'));
+      const height = Number(field('height'));
+      if (!width || !height) return resolve(undefined);
+      resolve({
+        width,
+        height,
+        codec: field('codec_name') ?? 'unknown',
+        bitRate: Number(field('bit_rate')) || 0,
+      });
+    });
+  });
+}
+
 export async function inspectVideo(inputPath: string, profile: VideoProfile): Promise<InspectResult> {
+  const source = await probe(inputPath);
   const chunks: EncodedChunk[] = [];
   const seen = new Set<number>();
   let framesRead = 0;
@@ -334,6 +372,7 @@ export async function inspectVideo(inputPath: string, profile: VideoProfile): Pr
   }
 
   return {
+    ...(source ? { source } : {}),
     framesRead,
     framesReadable,
     correctionsAverage: framesReadable > 0 ? correctionsTotal / framesReadable : 0,

@@ -147,13 +147,24 @@ async function main(argv: string[]): Promise<void> {
     if (!input) throw new Error(USAGE);
 
     const r = await withVideo(input, browser, (path) => inspectVideo(path, profile));
-    const rows: [string, string][] = [
+    const rows: [string, string][] = [];
+    if (r.source) {
+      const mbps = r.source.bitRate / 1_000_000;
+      // Our own encoder writes around 30 Mbps. Anything near that was never
+      // re-encoded by a platform, whatever the file name says.
+      const note = mbps > 20 ? ' - looks untouched, no platform re-encoded this' : '';
+      rows.push([
+        'source',
+        `${r.source.width}x${r.source.height} ${r.source.codec}, ${mbps.toFixed(1)} Mbps${note}`,
+      ]);
+    }
+    rows.push(
       ['frames', `${r.framesRead} read, ${r.framesReadable} readable`],
       ['hamming', `${r.correctionsAverage.toFixed(1)} corrections/frame average, ${r.correctionsMax} worst`],
       ['chunks', `${r.dataChunksFound}/${r.totalChunks} data, ${r.parityChunksFound} parity`],
       ['missing', r.totalChunks === 0 ? 'unknown, nothing decoded' : r.missing.length === 0 ? 'none' : r.missing.join(', ')],
-      ['verdict', r.recoverable ? 'file is recoverable' : `not recoverable: ${r.reason}`],
-    ];
+      ['verdict', r.recoverable ? 'file is recoverable' : `not recoverable: ${r.reason}`]
+    );
     for (const [label, value] of rows) console.log(`${label.padEnd(9)} ${value}`);
     return;
   }
