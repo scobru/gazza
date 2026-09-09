@@ -10,7 +10,7 @@ dbforall encode report.pdf carrier.mp4 --encrypt
 dbforall decode https://youtu.be/VIDEO_ID
 ```
 
-Verified end to end on YouTube, WhatsApp and Telegram. The numbers below are
+Verified end to end on YouTube, Instagram, WhatsApp and Telegram. The numbers below are
 measurements, not estimates, and where something has not been verified this
 README says so.
 
@@ -59,6 +59,7 @@ parity sitting right there.
 | WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | failed, at 12 px cells |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per frame | none | identical, at 16 px cells |
+| Instagram | 720x1280 h264, 6.9 Mbps | 0.0 per frame | none | identical |
 
 WhatsApp downscaled by 2.26x, well past the cell size the local tests said was
 needed, and the file still came back. Rescaling is linear, so a cell's average
@@ -87,6 +88,14 @@ needed.
 **A codec is not a bitrate.** Measuring against the wrong one flattered the
 profile by more than a factor of two.
 
+Instagram caps a Reel at 720x1280, so a 1080x1920 carrier comes back downscaled
+by 1.5x - and still decodes without a single correction. The first attempt at
+it failed completely, but the platform was not at fault: the downloader asked
+for a stream no taller than 1080 px, which reads as sensible until the carrier
+is portrait. Instagram's good rendition is 1280 tall, so the cap rejected it and
+took a 360x640 one instead, shrinking 12 px cells to 4 px. Reading the same Reel
+without the cap recovered the file byte for byte.
+
 ## Commands
 
 ```bash
@@ -100,7 +109,7 @@ original file name and MIME type travel inside the chunks, so `decode` with no
 output path restores the name.
 
 `decode` and `inspect` accept URLs and fetch them with `yt-dlp`, taking the
-highest bitrate stream at 1080p or under. Add `--cookies-from-browser firefox`
+highest resolution stream and then the highest bitrate. Add `--cookies-from-browser firefox`
 when YouTube refuses an anonymous request, which it does for unlisted videos and
 under rate limiting. `--stream <id>` forces one specific format.
 
@@ -198,8 +207,6 @@ packages/cli/   pipeline.ts  ffmpeg streaming, crop detection, inspection
   from reproducing AV1 at 4 Mbps locally after a real upload failed at 12 px;
   the successful upload that followed came back as h264. YouTube generates AV1
   renditions late and not for every video.
-- **Instagram rests on VP9 measurements**, the same yardstick that flattered
-  YouTube, and no real Reel has confirmed it. Treat its capacity as provisional.
 - **Upload is manual.** The tool writes an mp4; putting it on a platform and
   getting the URL back is your job. Only downloading is automated.
 - **Against the terms of service** of both platforms. The account carrying the

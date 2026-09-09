@@ -91,12 +91,17 @@ function askPassword(prompt: string): Promise<string> {
 const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
 /**
- * Pull the least damaged video-only stream at 1080p or under. Audio would only
- * be re-encoded for nothing, and a downscaled stream loses the cells we came
- * for. The bitrate sort matters: YouTube offers the same video as h264 and as
- * AV1, and AV1 at a similar bitrate destroys far more of the grid. Without it
- * yt-dlp picks either one, so the same command decodes on one run and fails on
- * the next.
+ * Pull the least damaged video-only stream: highest resolution first, then
+ * highest bitrate. Audio would only be re-encoded for nothing.
+ *
+ * No resolution cap. An earlier version preferred height <= 1080, which reads
+ * as sensible until the carrier is portrait: Instagram's 720x1280 rendition is
+ * 1280 tall, so the cap rejected it and took the 360x640 one instead - a 3x
+ * downscale that shrank 12 px cells to 4 px and lost the file. A platform never
+ * serves more pixels than were uploaded, so more is always better.
+ *
+ * The bitrate tiebreak matters on YouTube, which offers the same upload as h264
+ * and as AV1: AV1 at a similar bitrate destroys far more of the grid.
  */
 function download(
   url: string,
@@ -109,11 +114,8 @@ function download(
       'yt-dlp',
       [
         '--no-playlist',
-        '-f', format ?? 'bv*[height<=?1080]/bv*/b',
-        // Highest bitrate wins the tie. YouTube offers the same upload as h264
-        // and as AV1, and without this yt-dlp takes either one - the AV1
-        // rendition failed to decode where the h264 one was perfect.
-        ...(format ? [] : ['-S', 'res:1080,br']),
+        '-f', format ?? 'bv*/b',
+        ...(format ? [] : ['-S', 'res,br']),
         ...(browser ? ['--cookies-from-browser', browser] : []),
         '-o', join(directory, 'carrier.%(ext)s'),
         url,

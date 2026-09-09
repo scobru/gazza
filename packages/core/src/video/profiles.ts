@@ -30,7 +30,7 @@ import { PALETTE_4 } from '../palette/colors';
  * survives a bitrate an order of magnitude below what either platform serves.
  * Capacity that does not survive is not capacity.
  */
-/** Instagram: still the VP9-era measurement, never verified on a real upload. */
+/** Instagram: verified on a real Reel, which downscales 1080x1920 to 720x1280. */
 const INSTAGRAM_CELL_SIZE = 12;
 
 /** YouTube: sized for AV1 at 4 Mbps, which is what a real upload comes back as. */
@@ -56,9 +56,9 @@ export const YOUTUBE_PROFILE: VideoProfile = {
 };
 
 /**
- * Portrait. Verified down to 150 kbps VP9 but never against a real upload, and
- * the YouTube result says a VP9 measurement can flatter a profile. Treat the
- * capacity here as provisional.
+ * Portrait. Verified on a real Reel: Instagram caps at 720x1280, so the carrier
+ * comes back downscaled by 1.5x and still decodes with no corrections at all.
+ * 12 px cells survive that; they would not survive another halving.
  */
 export const INSTAGRAM_PROFILE: VideoProfile = {
   platform: 'instagram',
