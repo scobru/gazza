@@ -96,6 +96,27 @@ is portrait. Instagram's good rendition is 1280 tall, so the cap rejected it and
 took a 360x640 one instead, shrinking 12 px cells to 4 px. Reading the same Reel
 without the cap recovered the file byte for byte.
 
+## Local web interface
+
+A browser front end for encoding, if the command line is not where you want to
+be. It is the same pipeline underneath - same profiles, same parity, same
+ffmpeg - only driven from a page.
+
+```bash
+npm run web:dev      # http://127.0.0.1:4321
+```
+
+Choose a file, pick a platform, and it says how long the video will run, roughly
+how large it will be and how many chunks it takes *before* encoding anything. If
+the result would exceed what a platform accepts per video, it says so and offers
+to split rather than letting you find out after the upload.
+
+The server binds to loopback only: it reads file contents and shells out to
+ffmpeg, so it has no business being reachable from the network.
+
+Encoding only, for now. Decoding, sealing and reading a URL stay on the command
+line.
+
 ## Commands
 
 ```bash
@@ -205,6 +226,8 @@ packages/core/  chunk.ts     binary chunk format, split and assemble
                 crc32, hamming, reedsolomon, palette
 packages/cli/   pipeline.ts  ffmpeg streaming, crop detection, inspection
                 index.ts     the command line
+packages/web/   server.ts    loopback server, estimates and progress
+                index.html   the page, no framework and no build step
 ```
 
 ## Limits

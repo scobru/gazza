@@ -192,6 +192,13 @@ export async function encodeFileToVideo(
   const dataPerGroup = (parity === false ? undefined : parity.dataPerGroup) ?? DEFAULT_PARITY.dataPerGroup;
   const payloadSize = payloadSizeFor(profile, fileName, mimeType, dataPerGroup);
 
+  // A split longer than the platform allows would produce parts it rejects.
+  if (splitSeconds !== undefined && profile.maxDurationSeconds !== undefined && splitSeconds > profile.maxDurationSeconds) {
+    throw new Error(
+      `--split ${splitSeconds} s exceeds what ${profile.platform} accepts per video (${profile.maxDurationSeconds} s)`
+    );
+  }
+
   const cap = splitSeconds === undefined ? maxPayloadFor(profile, fileName, mimeType, parity) : undefined;
   if (cap !== undefined && data.length > cap) {
     throw new Error(

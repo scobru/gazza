@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dbforall</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #17171d; --line: #26262f;
+    --text: #e7e7ee; --dim: #8b8b9a; --accent: #d8b74a; --bad: #d2604f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 3rem 1.5rem; background: var(--bg); color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  h1 + p { color: var(--dim); margin: 0 0 2.5rem; }
+
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 12px; padding: 2.5rem 1.5rem;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #1c1c22; }
+  .drop strong { display: block; font-size: 1.05rem; margin-bottom: .2rem; }
+  .drop span { color: var(--dim); font-size: .9rem; }
+  input[type=file] { display: none; }
+
+  fieldset { border: 0; padding: 0; margin: 1.5rem 0 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  label { display: flex; flex-direction: column; gap: .35rem; font-size: .82rem; color: var(--dim); }
+  select, input[type=number] {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: .5rem .6rem; font: inherit; font-size: .9rem; min-width: 11rem;
+  }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.4rem; margin-top: 1.5rem; }
+  .panel h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--dim); margin: 0 0 1rem; font-weight: 600; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: .55rem 1.5rem; margin: 0; }
+  dt { color: var(--dim); font-size: .88rem; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  dd b { color: var(--accent); font-weight: 600; }
+
+  button {
+    margin-top: 1.5rem; width: 100%; padding: .8rem; font: inherit; font-weight: 600;
+    background: var(--accent); color: #17170e; border: 0; border-radius: 9px; cursor: pointer;
+  }
+  button:disabled { background: var(--line); color: var(--dim); cursor: not-allowed; }
+
+  progress { width: 100%; height: 6px; margin-top: 1rem; accent-color: var(--accent); }
+  .warn { color: var(--bad); font-size: .88rem; margin-top: .8rem; }
+  a.part {
+    display: flex; justify-content: space-between; gap: 1rem; padding: .6rem .8rem;
+    background: #1d1d24; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); text-decoration: none; margin-bottom: .5rem; font-size: .9rem;
+  }
+  a.part:hover { border-color: var(--accent); }
+  a.part span { color: var(--dim); font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>dbforall</h1>
+  <p>Turn a file into a video a platform will host for you.</p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file">
+    <strong id="dropTitle">Choose a file</strong>
+    <span id="dropHint">or drag it here</span>
+  </label>
+
+  <fieldset>
+    <label>Platform
+      <select id="platform">
+        <option value="youtube">YouTube — 1920×1080</option>
+        <option value="instagram">Instagram — 1080×1920, 90 s per post</option>
+      </select>
+    </label>
+    <label>Split into parts of
+      <select id="split">
+        <option value="">no limit</option>
+        <option value="30">30 seconds</option>
+        <option value="60">60 seconds</option>
+        <option value="90">90 seconds</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <section class="panel" id="preview" hidden>
+    <h2>Before you commit</h2>
+    <dl>
+      <dt>Video</dt><dd><b id="pDuration">—</b> <span id="pParts"></span></dd>
+      <dt>Size</dt><dd id="pSize">—</dd>
+      <dt>Chunks</dt><dd id="pChunks">—</dd>
+    </dl>
+    <p class="warn" id="pWarn" hidden></p>
+  </section>
+
+  <button id="go" disabled>Encode</button>
+  <progress id="bar" hidden></progress>
+
+  <section class="panel" id="result" hidden>
+    <h2>Ready to upload</h2>
+    <div id="parts"></div>
+    <p class="warn" id="error" hidden></p>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let chosen = null;
+
+const humanBytes = (n) =>
+  n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB'
+  : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + ' MB'
+  : n >= 1024 ? (n / 1024).toFixed(1) + ' KB'
+  : n + ' B';
+
+const humanTime = (s) =>
+  s >= 60 ? Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s' : s.toFixed(1) + ' s';
+
+function pick(file) {
+  chosen = file;
+  $('dropTitle').textContent = file.name;
+  $('dropHint').textContent = humanBytes(file.size);
+  $('result').hidden = true;
+  refresh();
+}
+
+$('file').addEventListener('change', (e) => e.target.files[0] && pick(e.target.files[0]));
+for (const type of ['dragenter', 'dragover']) {
+  $('drop').addEventListener(type, (e) => { e.preventDefault(); $('drop').classList.add('over'); });
+}
+for (const type of ['dragleave', 'drop']) {
+  $('drop').addEventListener(type, () => $('drop').classList.remove('over'));
+}
+$('drop').addEventListener('drop', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+});
+$('platform').addEventListener('change', refresh);
+$('split').addEventListener('change', refresh);
+
+async function refresh() {
+  if (!chosen) return;
+  const query = new URLSearchParams({
+    platform: $('platform').value,
+    size: chosen.size,
+    name: chosen.name,
+  });
+  if ($('split').value) query.set('split', $('split').value);
+
+  const e = await (await fetch('/estimate?' + query)).json();
+  if (e.error) return;
+
+  $('pDuration').textContent = humanTime(e.seconds);
+  $('pParts').textContent = e.parts > 1 ? `across ${e.parts} videos of ${humanTime(e.partSeconds)}` : '';
+  $('pSize').textContent = `about ${humanBytes(e.approximateBytes)} of mp4`;
+  $('pChunks').textContent =
+    `${e.dataChunks} data + ${e.parityChunks} parity, ${e.payloadSize} B each`;
+
+  const over = e.overSizeLimit !== undefined;
+  $('pWarn').hidden = !over;
+  if (over) {
+    $('pWarn').textContent =
+      `Each video would run ${humanTime(e.partSeconds)}, past the ${e.overSizeLimit} s this platform allows. Split shorter.`;
+  }
+
+  $('preview').hidden = false;
+  $('go').disabled = over;
+}
+
+$('go').addEventListener('click', async () => {
+  if (!chosen) return;
+  $('go').disabled = true;
+  $('bar').hidden = false;
+  $('bar').removeAttribute('value');
+  $('result').hidden = true;
+  $('error').hidden = true;
+  $('parts').innerHTML = '';
+
+  const query = new URLSearchParams({ platform: $('platform').value, name: chosen.name });
+  if ($('split').value) query.set('split', $('split').value);
+
+  try {
+    const response = await fetch('/encode?' + query, { method: 'POST', body: chosen });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line) continue;
+        const event = JSON.parse(line);
+
+        if (event.error) {
+          $('error').textContent = event.error;
+          $('error').hidden = false;
+          $('result').hidden = false;
+        } else if (event.done) {
+          for (const part of event.parts) {
+            const a = document.createElement('a');
+            a.className = 'part';
+            a.href = `/download/${event.id}/${part.index}`;
+            a.download = part.name;
+            a.innerHTML = `<span>${part.name}</span><span>${humanBytes(part.bytes)}</span>`;
+            $('parts').appendChild(a);
+          }
+          $('result').hidden = false;
+        } else {
+          $('bar').max = event.total;
+          $('bar').value = event.completed;
+        }
+      }
+    }
+  } catch (err) {
+    $('error').textContent = err.message;
+    $('error').hidden = false;
+    $('result').hidden = false;
+  } finally {
+    $('bar').hidden = true;
+    $('go').disabled = false;
+  }
+});
+</script>
+</body>
+</html>

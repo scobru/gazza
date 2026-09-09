@@ -1,0 +1,18 @@
+{
+  "name": "@dbforall/web",
+  "version": "1.0.0",
+  "description": "Local web interface for encoding carriers",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "node dist/server.js"
+  },
+  "dependencies": {
+    "@dbforall/core": "1.0.0",
+    "@dbforall/cli": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.3"
+  }
+}
