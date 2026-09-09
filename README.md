@@ -112,7 +112,7 @@ ffmpeg - only driven from a page.
 npm run web:dev      # http://127.0.0.1:4321
 ```
 
-**Encode.** Choose a file, pick a platform, and it says how long the video will
+**Encode.** Choose a file, pick a platform, optionally a password, and it says how long the video will
 run, roughly how large it will be and how many chunks it takes *before* encoding
 anything. If the result would exceed what a platform accepts per video, it says
 so and offers to split rather than letting you find out after the upload.
@@ -125,8 +125,9 @@ letterboxed the upload. A sealed carrier asks for its password.
 The server binds to loopback only: it reads file contents and shells out to
 ffmpeg, so it has no business being reachable from the network.
 
-Sealing on encode stays on the command line, where the password is not typed
-into a page.
+Both panes take a password. It travels in a request header rather than the
+query string, because a URL is kept in browser history and written to any access
+log in the way. Encoding asks for it twice: a typo cannot be undone later.
 
 ## Commands
 

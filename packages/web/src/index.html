@@ -101,6 +101,12 @@
         <option value="whatsapp">WhatsApp — send as video</option>
       </select>
     </label>
+    <label>Encrypt with
+      <input type="password" id="sealPassword" placeholder="a password, or leave empty" autocomplete="new-password">
+    </label>
+    <label>Repeat it
+      <input type="password" id="sealRepeat" placeholder="no way to recover it" autocomplete="new-password">
+    </label>
     <label>Split into parts of
       <select id="split">
         <option value="">no limit</option>
@@ -317,10 +323,12 @@ $('goDecode').addEventListener('click', async () => {
     }
 
     const query = new URLSearchParams({ job: id, platform: $('platformDecode').value });
-    if ($('password').value) query.set('password', $('password').value);
     for (const url of urls) query.append('url', url);
 
-    const response = await fetch('/decode?' + query, { method: 'POST' });
+    const response = await fetch('/decode?' + query, {
+      method: 'POST',
+      headers: $('password').value ? { 'x-dbforall-password': $('password').value } : {},
+    });
     await readEvents(response, (event) => {
       if (event.error) {
         $('errorDecode').textContent = event.error;
@@ -365,8 +373,23 @@ $('go').addEventListener('click', async () => {
   const query = new URLSearchParams({ platform: $('platform').value, name: chosen.name });
   if ($('split').value) query.set('split', $('split').value);
 
+  const sealWith = $('sealPassword').value;
+  if (sealWith && sealWith !== $('sealRepeat').value) {
+    $('error').textContent = 'The two passwords differ. A typo here cannot be undone later.';
+    $('error').hidden = false;
+    $('result').hidden = false;
+    $('go').disabled = false;
+    $('bar').hidden = true;
+    return;
+  }
+
   try {
-    const response = await fetch('/encode?' + query, { method: 'POST', body: chosen });
+    const response = await fetch('/encode?' + query, {
+      method: 'POST',
+      body: chosen,
+      // In a header rather than the query string: a URL is kept in history.
+      headers: sealWith ? { 'x-dbforall-password': sealWith } : {},
+    });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -387,6 +410,12 @@ $('go').addEventListener('click', async () => {
           $('error').hidden = false;
           $('result').hidden = false;
         } else if (event.done) {
+          if (event.sealed) {
+            const note = document.createElement('p');
+            note.className = 'note';
+            note.textContent = 'Sealed. The file name is inside the ciphertext; without the password nothing comes back.';
+            $('parts').appendChild(note);
+          }
           for (const part of event.parts) {
             const a = document.createElement('a');
             a.className = 'part';

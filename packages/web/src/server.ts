@@ -3,7 +3,17 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { DEFAULT_PARITY, VideoProfile, frameGeometry, isSealed, open as unseal, profileFor } from '@dbforall/core';
+import {
+  DEFAULT_PARITY,
+  SEALED_FILE_NAME,
+  SEALED_MIME_TYPE,
+  VideoProfile,
+  frameGeometry,
+  isSealed,
+  open as unseal,
+  profileFor,
+  seal,
+} from '@dbforall/core';
 import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@dbforall/cli/dist/pipeline';
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -80,6 +90,15 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+/**
+ * The password travels in a header, never in the query string: a URL is kept in
+ * browser history and written to any access log in the way, a header is not.
+ */
+const passwordOf = (req: IncomingMessage): string => {
+  const value = req.headers['x-dbforall-password'];
+  return (Array.isArray(value) ? value[0] : value) ?? '';
+};
+
 /** Finished carriers, waiting to be downloaded once and then deleted. */
 const ready = new Map<string, { directory: string; parts: string[] }>();
 
@@ -89,8 +108,21 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
   const splitParameter = url.searchParams.get('split');
   const splitSeconds = splitParameter ? Number(splitParameter) : undefined;
 
-  const data = new Uint8Array(await readBody(req));
+  let data = new Uint8Array(await readBody(req));
   if (data.length === 0) return json(res, 400, { error: 'No file received' });
+
+  // Seal before chunking, exactly as the command line does, so the name and the
+  // type end up inside the ciphertext rather than in the chunk headers.
+  const password = passwordOf(req);
+  let carriedName = fileName;
+  let carriedType = 'application/octet-stream';
+  if (password) {
+    data = new Uint8Array(
+      await seal({ data, fileName, mimeType: carriedType }, password)
+    );
+    carriedName = SEALED_FILE_NAME;
+    carriedType = SEALED_MIME_TYPE;
+  }
 
   // Newline-delimited JSON: the browser reads progress as it arrives instead of
   // staring at a spinner for a minute.
@@ -99,9 +131,9 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
 
   const directory = await mkdtemp(join(tmpdir(), 'dbforall-web-'));
   try {
-    const result = await encodeFileToVideo(data, join(directory, `${fileName}.mp4`), {
-      fileName,
-      mimeType: 'application/octet-stream',
+    const result = await encodeFileToVideo(data, join(directory, `${carriedName}.mp4`), {
+      fileName: carriedName,
+      mimeType: carriedType,
       profile,
       ...(splitSeconds ? { splitSeconds } : {}),
       onProgress: ({ completed, total }) => send({ phase: 'encode', completed, total }),
@@ -114,6 +146,7 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
     send({
       done: true,
       id,
+      sealed: password.length > 0,
       chunks: result.chunks,
       parityChunks: result.parityChunks,
       frames: result.frames,
@@ -136,7 +169,7 @@ async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL)
   if (!job) return json(res, 404, { error: 'Unknown decode job' });
 
   const profile = profileFor(url.searchParams.get('platform') ?? 'youtube');
-  const password = url.searchParams.get('password') ?? '';
+  const password = passwordOf(req);
   const urls = url.searchParams.getAll('url').filter(Boolean);
 
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
