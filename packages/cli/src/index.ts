@@ -22,6 +22,9 @@ const USAGE = `dbforall - store files inside video
   dbforall decode  <video|url> [out-file] [--platform ...] [--crop auto|w:h:x:y]
   dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
 
+--stream <id> forces one yt-dlp format instead of the highest bitrate, e.g.
+--stream 399 to read YouTube's AV1 rendition rather than its h264 one.
+
 --crop auto finds the grid inside a larger frame: a screen recording of a
 player, letterboxing, anything that does not fill the frame edge to edge.
 
@@ -55,13 +58,22 @@ const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
  * yt-dlp picks either one, so the same command decodes on one run and fails on
  * the next.
  */
-function download(url: string, directory: string, browser?: string): Promise<string> {
+function download(
+  url: string,
+  directory: string,
+  browser?: string,
+  format?: string
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       'yt-dlp',
       [
         '--no-playlist',
-        '-f', 'bv*[height<=?1080]/bv*/b',
+        '-f', format ?? 'bv*[height<=?1080]/bv*/b',
+        // Highest bitrate wins the tie. YouTube offers the same upload as h264
+        // and as AV1, and without this yt-dlp takes either one - the AV1
+        // rendition failed to decode where the h264 one was perfect.
+        ...(format ? [] : ['-S', 'res:1080,br']),
         ...(browser ? ['--cookies-from-browser', browser] : []),
         '-o', join(directory, 'carrier.%(ext)s'),
         url,
@@ -84,13 +96,14 @@ function download(url: string, directory: string, browser?: string): Promise<str
 async function withVideo<T>(
   source: string,
   browser: string | undefined,
+  format: string | undefined,
   body: (path: string) => Promise<T>
 ): Promise<T> {
   if (!isUrl(source)) return body(source);
 
   const directory = await mkdtemp(join(tmpdir(), 'dbforall-'));
   try {
-    return await body(await download(source, directory, browser));
+    return await body(await download(source, directory, browser, format));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -101,6 +114,8 @@ async function main(argv: string[]): Promise<void> {
   const args = positional(rest);
   const profile = profileFor(flag(rest, 'platform') ?? 'youtube');
   const browser = flag(rest, 'cookies-from-browser');
+  // Force one specific stream, e.g. --stream 399 for YouTube's AV1 rendition.
+  const stream = flag(rest, 'stream');
 
   if (command === 'encode') {
     const [input, output] = args;
@@ -131,7 +146,7 @@ async function main(argv: string[]): Promise<void> {
     const [input, output] = args;
     if (!input) throw new Error(USAGE);
 
-    const result = await withVideo(input, browser, (path) =>
+    const result = await withVideo(input, browser, stream, (path) =>
       decodeVideoFile(path, profile, {
         crop: flag(rest, 'crop'),
         onProgress: ({ completed, total }) =>
@@ -156,7 +171,7 @@ recovered chunk ${completed}/${total}`),
     const [input] = args;
     if (!input) throw new Error(USAGE);
 
-    const r = await withVideo(input, browser, (path) =>
+    const r = await withVideo(input, browser, stream, (path) =>
       inspectVideo(path, profile, { crop: flag(rest, 'crop') })
     );
     const rows: [string, string][] = [];
