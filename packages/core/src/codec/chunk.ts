@@ -4,6 +4,14 @@ import { ChunkHeader, ChunkKind, EncodedChunk } from './types';
 export const CHUNK_MAGIC = 0x44424641; // "DBFA"
 export const CHUNK_VERSION = 3;
 
+/**
+ * Versions this build can still read. Version 2 has the identical binary
+ * layout; only the parity generator matrix changed, and data chunks are
+ * systematic, so their payloads are unaffected. Their parity is not, and the
+ * recovery layer refuses to solve with it.
+ */
+export const READABLE_VERSIONS: readonly number[] = [2, 3];
+
 /** Sentinels written when a chunk takes no part in a parity group. */
 const NO_PARITY_GROUP = 0xffffffff;
 const NO_PARITY_INDEX = 0xffff;
@@ -119,7 +127,9 @@ export function parseChunk(bytes: Uint8Array): EncodedChunk {
   if (view.getUint32(0) !== CHUNK_MAGIC) throw new Error('Bad magic: not a dbforall chunk');
 
   const version = bytes[4];
-  if (version !== CHUNK_VERSION) throw new Error(`Unsupported chunk version ${version}`);
+  if (!READABLE_VERSIONS.includes(version)) {
+    throw new Error(`Unsupported chunk version ${version}, this build reads ${READABLE_VERSIONS.join(' and ')}`);
+  }
 
   const kind = CODE_TO_KIND[bytes[5]];
   if (!kind) throw new Error(`Unknown chunk kind ${bytes[5]}`);

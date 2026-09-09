@@ -93,7 +93,14 @@ export function recoverDataChunks(received: EncodedChunk[]): RecoveryResult {
   for (const chunk of received) {
     if (chunk.header.kind === 'data') {
       if (!data.has(chunk.header.chunkIndex)) data.set(chunk.header.chunkIndex, chunk);
-    } else if (chunk.header.kind === 'parity' && chunk.header.parityGroupId !== undefined) {
+    } else if (
+      chunk.header.kind === 'parity' &&
+      chunk.header.parityGroupId !== undefined &&
+      // Parity from an older version was built on a different generator matrix
+      // and would solve to plausible-looking rubbish. Data chunks are systematic
+      // and carry across versions untouched; parity does not.
+      chunk.header.version === CHUNK_VERSION
+    ) {
       const group = parityByGroup.get(chunk.header.parityGroupId) ?? [];
       if (!group.some((c) => c.header.parityIndex === chunk.header.parityIndex)) group.push(chunk);
       parityByGroup.set(chunk.header.parityGroupId, group);
