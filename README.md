@@ -1,5 +1,7 @@
 # dbforall
 
+**English** · [Italiano](README.it.md)
+
 Store arbitrary files inside a video, so a platform that hosts video hosts your
 bytes. The file becomes a grid of coloured cells; the grid survives the
 platform's re-encode; the video comes back and the file comes out byte for byte.
@@ -260,3 +262,27 @@ packages/web/   server.ts    loopback server, estimates and progress
   renditions late and not for every video.
 - **Against the terms of service** of these platforms. The account carrying the
   data can be removed, and with it the data.
+
+## Getting started
+
+```bash
+git clone https://github.com/scobru/dbforall.git
+cd dbforall
+npm install && npm run build && npm test
+```
+
+Then either the command line:
+
+```bash
+node packages/cli/dist/index.js encode report.pdf carrier.mp4 --encrypt
+```
+
+or the page:
+
+```bash
+npm run web:dev      # http://127.0.0.1:4321
+```
+
+---
+
+Made by [scobru](https://github.com/scobru) · [github.com/scobru/dbforall](https://github.com/scobru/dbforall) · MIT

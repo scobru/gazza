@@ -20,6 +20,14 @@
     "fec",
     "reed-solomon"
   ],
-  "author": "Antigravity",
-  "license": "MIT"
+  "author": "scobru",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scobru/dbforall.git"
+  },
+  "homepage": "https://github.com/scobru/dbforall",
+  "bugs": {
+    "url": "https://github.com/scobru/dbforall/issues"
+  }
 }
