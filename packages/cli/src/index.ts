@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
-import { profileFor } from '@dbforall/core';
+import { createInterface } from 'node:readline';
+import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@dbforall/core';
 import { decodeVideoFile, encodeFileToVideo, inspectVideo, maxPayloadFor, payloadSizeFor } from './pipeline';
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -18,9 +19,15 @@ const MIME_BY_EXT: Record<string, string> = {
 
 const USAGE = `dbforall - store files inside video
 
-  dbforall encode  <file> <out.mp4>       [--platform youtube|instagram] [--crf 14]
+  dbforall encode  <file> <out.mp4>       [--platform youtube|instagram] [--crf 14] [--encrypt]
   dbforall decode  <video|url> [out-file] [--platform ...] [--crop auto|w:h:x:y]
   dbforall inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
+
+--encrypt seals the file with AES-256-GCM before it becomes chunks, hiding the
+contents, the file name and the type. The password is asked for on the
+terminal, never passed as an argument where the shell history and the process
+list would keep it; set DBFORALL_PASSWORD to script it. Decoding a sealed
+carrier asks for it again. Lose the password and the file is gone.
 
 --stream <id> forces one yt-dlp format instead of the highest bitrate, e.g.
 --stream 399 to read YouTube's AV1 rendition rather than its h264 one.
@@ -39,13 +46,42 @@ function flag(args: string[], name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
+/** Flags that stand alone; every other --flag consumes the argument after it. */
+const BOOLEAN_FLAGS = new Set(['--encrypt']);
+
 function positional(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--')) i++;
-    else out.push(args[i]);
+    if (!args[i].startsWith('--')) out.push(args[i]);
+    else if (!BOOLEAN_FLAGS.has(args[i])) i++;
   }
   return out;
+}
+
+/**
+ * Read a password without echoing it. Environment first so scripts have a way
+ * in that does not involve the command line, where the shell history and the
+ * process list would both keep a copy.
+ */
+function askPassword(prompt: string): Promise<string> {
+  const fromEnvironment = process.env.DBFORALL_PASSWORD;
+  if (fromEnvironment) return Promise.resolve(fromEnvironment);
+  if (!process.stdin.isTTY) {
+    return Promise.reject(new Error('No terminal to ask for a password on; set DBFORALL_PASSWORD'));
+  }
+
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+    // Print the prompt, swallow everything typed after it.
+    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = (chunk: string) => {
+      if (chunk.startsWith(prompt)) process.stderr.write(prompt);
+    };
+    rl.question(prompt, (answer) => {
+      process.stderr.write('\n');
+      rl.close();
+      resolve(answer);
+    });
+  });
 }
 
 const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
@@ -126,9 +162,21 @@ async function main(argv: string[]): Promise<void> {
     const [input, output] = args;
     if (!input || !output) throw new Error(USAGE);
 
-    const data = new Uint8Array(await readFile(input));
-    const fileName = basename(input);
-    const mimeType = MIME_BY_EXT[extname(input).toLowerCase()] ?? 'application/octet-stream';
+    let data = new Uint8Array(await readFile(input));
+    let fileName = basename(input);
+    let mimeType = MIME_BY_EXT[extname(input).toLowerCase()] ?? 'application/octet-stream';
+
+    if (rest.includes('--encrypt')) {
+      const password = await askPassword('Password: ');
+      if (!process.env.DBFORALL_PASSWORD) {
+        // A typo here would be unrecoverable: nothing else knows the key.
+        if ((await askPassword('Repeat: ')) !== password) throw new Error('Passwords do not match');
+      }
+      data = new Uint8Array(await seal({ data, fileName, mimeType }, password));
+      fileName = SEALED_FILE_NAME;
+      mimeType = SEALED_MIME_TYPE;
+      process.stderr.write('sealed: contents, file name and type are all encrypted\n');
+    }
 
     const result = await encodeFileToVideo(data, output, {
       fileName,
@@ -159,13 +207,21 @@ async function main(argv: string[]): Promise<void> {
       })
     );
 
-    const target = output ?? result.header.fileName;
-    await writeFile(target, result.data);
+    let payload = result.data;
+    let name = result.header.fileName;
+    if (isSealed(payload)) {
+      const opened = await unseal(payload, await askPassword('Password: '));
+      payload = opened.data;
+      name = opened.fileName;
+    }
+
+    const target = output ?? name;
+    await writeFile(target, payload);
 
     process.stderr.write('\r');
     const rebuilt = result.recovered.length > 0 ? `, ${result.recovered.length} rebuilt from parity` : '';
     console.log(
-      `${target}: ${result.data.length} B recovered from ${result.framesRead} frames ` +
+      `${target}: ${payload.length} B recovered from ${result.framesRead} frames ` +
         `(${result.framesRejected} unreadable${rebuilt})`
     );
     return;

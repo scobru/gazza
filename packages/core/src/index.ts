@@ -7,3 +7,4 @@ export * from './palette/colors';
 export * from './video/frame';
 export * from './video/profiles';
 export * from './fec/groups';
+export * from './crypto/box';

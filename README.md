@@ -114,6 +114,27 @@ dbforall decode  <video|url> [out-file] [--platform youtube|instagram]
 dbforall inspect <video|url>            [--platform youtube|instagram]
 ```
 
+## Encryption
+
+`--encrypt` seals the file with AES-256-GCM before it becomes chunks. The
+password never appears as an argument, where the shell history and the process
+list would both keep a copy: it is asked for on the terminal, or read from
+`DBFORALL_PASSWORD` for scripts.
+
+The file name and MIME type travel *inside* the ciphertext, and the chunk
+headers carry `sealed.dbfa` instead, so a carrier on a public platform gives up
+neither the contents nor what they were called. Decoding asks for the password
+and restores the original name.
+
+The key is PBKDF2-HMAC-SHA256 over 600,000 rounds: a carrier can be downloaded
+by anyone and attacked offline for as long as they like, so the only defence is
+making each guess expensive. GCM authenticates, so a wrong password and tampered
+bytes fail identically and nothing partial is ever written.
+
+There is no recovery. Lose the password and the file is gone.
+
+## Commands, continued
+
 Encode and decode must use the same platform profile. `decode` and `inspect`
 accept a URL and fetch it with `yt-dlp`; the original file name and MIME type
 travel inside the chunks, so `decode` with no output path restores the name.
@@ -158,7 +179,5 @@ npm install && npm run build && npm test
   same way as YouTube's, but a Reel goes through more than a transcode: the
   app re-frames, and reading one back with `yt-dlp` may need cookies for
   anything not public.
-- **No encryption.** The payload sits in the video in the clear. Anyone who
-  knows the format reads it.
 - **Against the terms of service** of both platforms. The account carrying the
   data can be removed, and with it the data.
