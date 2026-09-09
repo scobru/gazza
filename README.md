@@ -207,6 +207,11 @@ verdict   file is recoverable
 
 ## Uploading
 
+Uploading is yours to do, on purpose. The tool writes an mp4 and reads one back;
+what happens in between is a decision about which account, which platform and
+which risk, and none of that belongs in a library. Automating it would also mean
+publishing on a schedule, which is the behaviour that gets an account closed.
+
 Upload the file as it is. If the platform offers cropping, filters, music or
 stabilisation, skip all of it: a crop moves the grid and no amount of error
 correction brings it back.
@@ -253,7 +258,5 @@ packages/web/   server.ts    loopback server, estimates and progress
   from reproducing AV1 at 4 Mbps locally after a real upload failed at 12 px;
   the successful upload that followed came back as h264. YouTube generates AV1
   renditions late and not for every video.
-- **Upload is manual.** The tool writes an mp4; putting it on a platform and
-  getting the URL back is your job. Only downloading is automated.
 - **Against the terms of service** of these platforms. The account carrying the
   data can be removed, and with it the data.
