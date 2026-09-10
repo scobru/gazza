@@ -264,6 +264,32 @@ allo stesso Dockerfile:
 caprover deploy
 ```
 
+### Farla girare dove la raggiunge chiunque
+
+Un'istanza pubblica è un codificatore video messo in mano a sconosciuti, quindi
+rifiuta più di quanto accetti. Tutte variabili d'ambiente:
+
+| | default | cosa impedisce |
+| --- | --- | --- |
+| `GAZZA_MAX_FILE` | 8 MB | un file letto in memoria senza tetto |
+| `GAZZA_MAX_VIDEO` | 256 MB | lo stesso dal lato decodifica |
+| `GAZZA_MAX_QUEUE` | 4 | richieste che si accumulano una sull'altra |
+| `GAZZA_JOB_TTL_MS` | 30 min | carrier mai ritirati che riempiono il disco |
+| `GAZZA_ALLOW_URLS` | spento | **quella che conta** — vedi sotto |
+| `GAZZA_URL_HOSTS` | youtube, youtu.be, instagram | dove può puntare un link |
+| `GAZZA_TOKEN` | non impostato | che la usi chiunque |
+
+Una sola codifica per volta: ffmpeg è legato alla CPU e farne girare diverse non
+le finisce prima, esaurisce solo i core.
+
+**Lo scaricamento da link è spento di default e conviene lasciarlo spento.**
+Un link significa che questo server fa una richiesta scelta da chi chiama, e da
+dentro un container quella richiesta raggiunge cose che non avevi in mente: le
+app vicine per nome, l'endpoint dei metadati del provider, tutta la rete
+privata. Attivandolo, resta limitato agli host che possono plausibilmente
+ospitare un carrier, con confronto sul punto così che `evil-youtube.com` non
+passi per `youtube.com`.
+
 **Leggi qui prima di esporla.** Il server ascolta su loopback quando gira su
 una macchina normale e su tutte le interfacce dentro un container, cosa che
 riconosce da solo; `HOST` ha comunque la precedenza. Il compose la pubblica solo

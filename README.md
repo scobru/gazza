@@ -256,6 +256,31 @@ at the same Dockerfile:
 caprover deploy
 ```
 
+### Running it where anyone can reach it
+
+A public instance is a video encoder handed to strangers, so it refuses more
+than it accepts. All of these are environment variables:
+
+| | default | what it stops |
+| --- | --- | --- |
+| `GAZZA_MAX_FILE` | 8 MB | a file read into memory without a ceiling |
+| `GAZZA_MAX_VIDEO` | 256 MB | the same on the decode side |
+| `GAZZA_MAX_QUEUE` | 4 | requests piling up behind one another |
+| `GAZZA_JOB_TTL_MS` | 30 min | carriers nobody collected filling the disk |
+| `GAZZA_ALLOW_URLS` | off | **the important one** - see below |
+| `GAZZA_URL_HOSTS` | youtube, youtu.be, instagram | where a link may point |
+| `GAZZA_TOKEN` | unset | anyone using it at all |
+
+Only one encode runs at a time: ffmpeg is CPU-bound and running several does
+not finish them sooner, it just runs the machine out of cores.
+
+**Fetching links is off by default and should stay off unless you mean it.**
+A link means this server makes a request of the caller's choosing, and from
+inside a container that reaches things you did not intend: sibling apps by
+name, the provider's metadata endpoint, anything on the private network.
+Turning it on limits it to hosts that plausibly hold a carrier, matched on a
+dot boundary so `evil-youtube.com` is not `youtube.com`.
+
 **Read this before exposing it.** The server binds loopback on a workstation
 and every interface inside a container, which it detects for itself; `HOST`
 overrides both. The compose file publishes it on `127.0.0.1` only. That is

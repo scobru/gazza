@@ -39,6 +39,69 @@ const signal = containerSignal();
 const HOST = process.env.HOST ?? (signal ? '0.0.0.0' : '127.0.0.1');
 const PAGE = join(__dirname, '..', 'src', 'index.html');
 
+/*
+ * Limits for an instance anyone can reach. Every one of these exists because
+ * without it a single request can take the whole thing down: the body was read
+ * into memory unbounded, ffmpeg was spawned once per request with no ceiling,
+ * finished carriers were deleted only if somebody downloaded them, and yt-dlp
+ * would fetch whatever URL it was handed - including the host's own network.
+ */
+const MAX_FILE = Number(process.env.GAZZA_MAX_FILE ?? 8 * 1024 * 1024);
+const MAX_VIDEO = Number(process.env.GAZZA_MAX_VIDEO ?? 256 * 1024 * 1024);
+const MAX_QUEUE = Number(process.env.GAZZA_MAX_QUEUE ?? 4);
+const JOB_TTL_MS = Number(process.env.GAZZA_JOB_TTL_MS ?? 30 * 60 * 1000);
+
+/** A shared secret, if the operator wants one. Empty means open. */
+const TOKEN = process.env.GAZZA_TOKEN ?? '';
+
+/**
+ * Fetching a URL means this server makes a request of the requester's choosing,
+ * which reaches everything the container can: sibling apps by name, the
+ * provider's metadata endpoint, anything on the private network. So it is off
+ * unless asked for, and even then only to hosts that plausibly hold a carrier.
+ */
+const ALLOW_URLS = process.env.GAZZA_ALLOW_URLS === '1';
+const URL_HOSTS = (process.env.GAZZA_URL_HOSTS ?? 'youtube.com,youtu.be,instagram.com')
+  .split(',')
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean);
+
+function urlIsAllowed(candidate: string): boolean {
+  let host: string;
+  try {
+    host = new URL(candidate).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  // Suffix match on a dot boundary, so evil-youtube.com does not pass as youtube.com.
+  return URL_HOSTS.some((allowed) => host === allowed || host.endsWith('.' + allowed));
+}
+
+/**
+ * One ffmpeg at a time. It is CPU-bound and a carrier is minutes of encoding;
+ * running several in parallel does not finish them sooner, it just runs the
+ * machine out of cores. Anything past a short queue is turned away rather than
+ * left waiting forever.
+ */
+let running = 0;
+let queued = 0;
+
+async function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  if (queued >= MAX_QUEUE) throw Object.assign(new Error('Too many people are asking her at once. Try again in a minute.'), { status: 503 });
+  queued++;
+  try {
+    while (running > 0) await new Promise((resolve) => setTimeout(resolve, 250));
+    running++;
+    try {
+      return await work();
+    } finally {
+      running--;
+    }
+  } finally {
+    queued--;
+  }
+}
+
 /**
  * Bytes of mp4 per frame, measured on real carriers: 81.5 MB over 1104 frames
  * on the YouTube profile, 27.8 MB over 214 on Instagram. Smaller cells mean
@@ -102,11 +165,35 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
   res.end(payload);
 };
 
-function readBody(req: IncomingMessage): Promise<Buffer> {
+function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const parts: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => parts.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(parts)));
+    let size = 0;
+    let over = false;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        // Stop keeping it, but keep listening: destroying the request here
+        // would take the connection down before the refusal could be sent, and
+        // the caller would see a reset instead of a reason.
+        over = true;
+        parts.length = 0;
+        return;
+      }
+      parts.push(chunk);
+    });
+    req.on('end', () => {
+      if (over) {
+        reject(
+          Object.assign(
+            new Error(`That is larger than ${Math.round(limit / 1048576)} MB, which is as much as this instance accepts.`),
+            { status: 413 }
+          )
+        );
+        return;
+      }
+      resolve(Buffer.concat(parts));
+    });
     req.on('error', reject);
   });
 }
@@ -121,7 +208,7 @@ const passwordOf = (req: IncomingMessage): string => {
 };
 
 /** Finished carriers, waiting to be downloaded once and then deleted. */
-const ready = new Map<string, { directory: string; parts: string[] }>();
+const ready = new Map<string, { directory: string; parts: string[]; born: number }>();
 
 async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const fileName = basename(url.searchParams.get('name') ?? 'payload.bin');
@@ -129,7 +216,7 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
   const splitParameter = url.searchParams.get('split');
   const splitSeconds = splitParameter ? Number(splitParameter) : undefined;
 
-  let data = new Uint8Array(await readBody(req));
+  let data = new Uint8Array(await readBody(req, MAX_FILE));
   if (data.length === 0) return json(res, 400, { error: 'No file received' });
 
   // Seal before chunking, exactly as the command line does, so the name and the
@@ -152,16 +239,16 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
 
   const directory = await mkdtemp(join(tmpdir(), 'gazza-web-'));
   try {
-    const result = await encodeFileToVideo(data, join(directory, `${carriedName}.mp4`), {
+    const result = await exclusive(() => encodeFileToVideo(data, join(directory, `${carriedName}.mp4`), {
       fileName: carriedName,
       mimeType: carriedType,
       profile,
       ...(splitSeconds ? { splitSeconds } : {}),
       onProgress: ({ completed, total }) => send({ phase: 'encode', completed, total }),
-    });
+    }));
 
     const id = basename(directory);
-    ready.set(id, { directory, parts: result.parts });
+    ready.set(id, { directory, parts: result.parts, born: Date.now() });
 
     const sizes = await Promise.all(result.parts.map(async (p) => (await stat(p)).size));
     send({
@@ -183,7 +270,7 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
 }
 
 /** A decode in the making: uploaded parts and fetched URLs land in one directory. */
-const jobs = new Map<string, { directory: string; files: string[] }>();
+const jobs = new Map<string, { directory: string; files: string[]; born: number }>();
 
 async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const job = jobs.get(url.searchParams.get('job') ?? '');
@@ -192,6 +279,18 @@ async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL)
   const profile = profileFor(url.searchParams.get('platform') ?? 'youtube');
   const password = passwordOf(req);
   const urls = url.searchParams.getAll('url').filter(Boolean);
+
+  if (urls.length > 0 && !ALLOW_URLS) {
+    return json(res, 403, {
+      error: 'This instance does not fetch links. Download the video and upload the file instead.',
+    });
+  }
+  const refused = urls.filter((candidate) => !urlIsAllowed(candidate));
+  if (refused.length > 0) {
+    return json(res, 403, {
+      error: `Not a host this instance will fetch from: ${refused.join(', ')}. Allowed: ${URL_HOSTS.join(', ')}.`,
+    });
+  }
 
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
   const send = (event: unknown) => res.write(`${JSON.stringify(event)}
@@ -209,13 +308,13 @@ async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL)
     const read = { crop: undefined as string | undefined, onProgress: (u: { completed: number; total: number }) => send({ phase: 'decode', ...u }) };
     let result;
     try {
-      result = await decodeVideos(job.files, profile, read);
+      result = await exclusive(() => decodeVideos(job.files, profile, read));
     } catch (first) {
       // A screen recording, letterboxing or a player that was not fullscreen:
       // the grid is in there but not filling the frame. Worth one more try.
       send({ phase: 'retry', message: 'looking for the grid inside the frame' });
       try {
-        result = await decodeVideos(job.files, profile, { ...read, crop: 'auto' });
+        result = await exclusive(() => decodeVideos(job.files, profile, { ...read, crop: 'auto' }));
       } catch {
         throw first;
       }
@@ -265,6 +364,12 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   try {
+    if (TOKEN) {
+      const offered = req.headers['x-gazza-token'] ?? url.searchParams.get('token') ?? '';
+      if ((Array.isArray(offered) ? offered[0] : offered) !== TOKEN) {
+        return json(res, 401, { error: 'This instance is not open. A token is required.' });
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/') {
       const page = await readFile(PAGE);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -289,7 +394,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/decode/job') {
       const directory = await mkdtemp(join(tmpdir(), 'gazza-job-'));
       const id = basename(directory);
-      jobs.set(id, { directory, files: [] });
+      jobs.set(id, { directory, files: [], born: Date.now() });
       return json(res, 200, { id });
     }
 
@@ -297,7 +402,7 @@ const server = createServer(async (req, res) => {
       const job = jobs.get(url.searchParams.get('job') ?? '');
       if (!job) return json(res, 404, { error: 'Unknown decode job' });
       const path = join(job.directory, `part-${job.files.length}.mp4`);
-      await writeFile(path, await readBody(req));
+      await writeFile(path, await readBody(req, MAX_VIDEO));
       job.files.push(path);
       return json(res, 200, { files: job.files.length });
     }
@@ -328,9 +433,24 @@ const server = createServer(async (req, res) => {
 
     json(res, 404, { error: 'Not found' });
   } catch (error) {
-    json(res, 500, { error: (error as Error).message });
+    const status = (error as { status?: number }).status ?? 500;
+    json(res, status, { error: (error as Error).message });
   }
 });
+
+/**
+ * Carriers are deleted when collected, but nobody has to collect them. Without
+ * this sweep an instance fills its disk with videos no one ever came back for.
+ */
+setInterval(() => {
+  const cutoff = Date.now() - JOB_TTL_MS;
+  for (const [id, entry] of [...ready, ...jobs]) {
+    if (entry.born > cutoff) continue;
+    void rm(entry.directory, { recursive: true, force: true });
+    ready.delete(id);
+    jobs.delete(id);
+  }
+}, 60_000).unref();
 
 server.listen(PORT, HOST, () => {
   // Say why this address was chosen. Without it a wrong bind is
@@ -343,8 +463,11 @@ server.listen(PORT, HOST, () => {
 
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write(
-      'listening beyond loopback: anyone who can reach this can spend your CPU ' +
-        'on ffmpeg and read what it decodes. Put authentication in front of it.\n'
+      `reachable beyond loopback. files <= ${Math.round(MAX_FILE / 1048576)} MB, ` +
+        `videos <= ${Math.round(MAX_VIDEO / 1048576)} MB, one encode at a time, ` +
+        `temporaries swept after ${Math.round(JOB_TTL_MS / 60000)} min, ` +
+        `links ${ALLOW_URLS ? 'allowed from ' + URL_HOSTS.join('/') : 'refused'}, ` +
+        `token ${TOKEN ? 'required' : 'not set'}.\n`
     );
   }
 });
