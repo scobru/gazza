@@ -321,7 +321,30 @@ proprio. Un container è la forma giusta.
 
 ## Requisiti
 
-`ffmpeg` nel PATH per tutto, `yt-dlp` nel PATH per leggere da un URL.
+Node 22 o superiore, e due programmi che non sono pacchetti npm: **ffmpeg**
+(insieme a ffprobe, che arriva con lui) per tutto, e **yt-dlp** per leggere da
+un URL. `npm install` non li porta — gazza non ha nessuna dipendenza a runtime,
+li lancia e basta.
+
+```bash
+# Debian, Ubuntu
+sudo apt install ffmpeg && sudo apt install yt-dlp     # oppure: pipx install yt-dlp
+
+# Alpine
+apk add ffmpeg yt-dlp
+
+# macOS
+brew install ffmpeg yt-dlp
+
+# Windows
+winget install Gyan.FFmpeg yt-dlp.yt-dlp
+```
+
+Senza ffmpeg non si codifica né si decodifica niente. Senza yt-dlp smettono di
+funzionare solo i link, i file no. L'interfaccia web dice all'avvio quali ha
+trovato, e lo scrive sulla pagina invece di aspettare che tu abbia già caricato
+qualcosa. L'immagine del container li porta tutti e tre, quindi lì non serve
+niente di tutto questo.
 
 ## Per iniziare
 

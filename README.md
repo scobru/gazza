@@ -311,7 +311,29 @@ for it.
 
 ## Requirements
 
-`ffmpeg` on PATH for everything, `yt-dlp` on PATH to read from a URL.
+Node 22 or newer, and two programs that are not npm packages: **ffmpeg** (with
+ffprobe, which ships with it) for everything, and **yt-dlp** to read from a URL.
+`npm install` does not bring them - gazza has no runtime dependencies at all,
+it spawns these.
+
+```bash
+# Debian, Ubuntu
+sudo apt install ffmpeg && sudo apt install yt-dlp     # or: pipx install yt-dlp
+
+# Alpine
+apk add ffmpeg yt-dlp
+
+# macOS
+brew install ffmpeg yt-dlp
+
+# Windows
+winget install Gyan.FFmpeg yt-dlp.yt-dlp
+```
+
+Without ffmpeg nothing encodes or decodes. Without yt-dlp only links stop
+working; files still do. The web interface reports which are present when it
+starts, and says so on the page rather than waiting for you to upload something
+first. The container image carries all three, so none of this applies there.
 
 ```bash
 npm install && npm run build && npm test

@@ -428,6 +428,12 @@ async function loadLimits() {
     return; // The page still works; refresh() reports the outage properly.
   }
 
+  if (limits.tools && !limits.tools.ffmpeg) {
+    $('offline').textContent =
+      'ffmpeg is not installed on the machine running gazza. Nothing will encode or decode until it is.';
+    $('offline').hidden = false;
+  }
+
   $('limitsEncode').innerHTML =
     `This instance takes files up to <b>${humanBytes(limits.maxFile)}</b>, ` +
     `runs one encode at a time, and deletes carriers nobody collects after ` +

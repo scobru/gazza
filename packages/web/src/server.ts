@@ -1,5 +1,6 @@
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -169,6 +170,21 @@ function estimate(profile: VideoProfile, fileSize: number, fileName: string, spl
     ...(cap !== undefined && partSeconds > cap ? { overSizeLimit: cap } : {}),
   };
 }
+
+/**
+ * ffmpeg, ffprobe and yt-dlp are programs, not packages: npm install does not
+ * bring them. Checked once at startup so a missing one is a line in the log
+ * rather than a surprise after somebody has already uploaded a file.
+ */
+const has = (tool: string, flag = '-version'): boolean => {
+  try {
+    return spawnSync(tool, [flag], { stdio: 'ignore' }).status === 0;
+  } catch {
+    return false;
+  }
+};
+
+const tools = { ffmpeg: has('ffmpeg'), ffprobe: has('ffprobe'), ytdlp: has('yt-dlp', '--version') };
 
 /** Sizes people can read: a 256 KB limit rounded to MB is "0 MB". */
 const humanSize = (bytes: number): string =>
@@ -449,7 +465,8 @@ const server = createServer(async (req, res) => {
         maxVideo: MAX_VIDEO,
         maxQueue: MAX_QUEUE,
         jobTtlMinutes: Math.round(JOB_TTL_MS / 60000),
-        allowUrls: ALLOW_URLS,
+        allowUrls: ALLOW_URLS && tools.ytdlp,
+        tools,
         urlHosts: URL_HOSTS,
         tokenRequired: TOKEN.length > 0,
       });
@@ -539,6 +556,17 @@ server.listen(PORT, HOST, () => {
     : signal ? 'container detected via ' + signal
     : 'no container detected';
   process.stdout.write(`gazza is awake on http://${HOST}:${PORT} (${why})\n`);
+
+  const missing = Object.entries(tools)
+    .filter(([, present]) => !present)
+    .map(([name]) => name);
+  if (missing.includes('ffmpeg') || missing.includes('ffprobe')) {
+    process.stdout.write(
+      `ffmpeg is missing (${missing.join(', ')}): nothing will encode or decode until it is on PATH.\n`
+    );
+  } else if (missing.length > 0) {
+    process.stdout.write(`${missing.join(', ')} missing: links cannot be fetched, files still work.\n`);
+  }
 
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write(
