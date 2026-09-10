@@ -39,6 +39,16 @@ const signal = containerSignal();
 const HOST = process.env.HOST ?? (signal ? '0.0.0.0' : '127.0.0.1');
 const PAGE = join(__dirname, '..', 'src', 'index.html');
 
+/** Just the head: a whole magpie is unreadable at 16 px. */
+const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#14151d"/>
+  <circle cx="14" cy="17" r="9" fill="#101420"/>
+  <path d="M14 8 a9 9 0 0 1 9 9 q-5-3-9-3 -4 0-9 3 a9 9 0 0 1 9-9Z" fill="#3d8f7d"/>
+  <circle cx="17.5" cy="14.5" r="3" fill="#fbfcff"/>
+  <circle cx="18.3" cy="14.5" r="1.5" fill="#0b0e16"/>
+  <path d="M22 16 L31 18 L22 20 Z" fill="#f2b134"/>
+</svg>`;
+
 /*
  * Limits for an instance anyone can reach. Every one of these exists because
  * without it a single request can take the whole thing down: the body was read
@@ -422,6 +432,23 @@ const server = createServer(async (req, res) => {
       const page = await readFile(PAGE);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(page);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/favicon.svg') {
+      res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'max-age=86400' });
+      return res.end(FAVICON);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/limits') {
+      return json(res, 200, {
+        maxFile: MAX_FILE,
+        maxVideo: MAX_VIDEO,
+        maxQueue: MAX_QUEUE,
+        jobTtlMinutes: Math.round(JOB_TTL_MS / 60000),
+        allowUrls: ALLOW_URLS,
+        urlHosts: URL_HOSTS,
+        tokenRequired: TOKEN.length > 0,
+      });
     }
 
     if (req.method === 'GET' && url.pathname === '/estimate') {

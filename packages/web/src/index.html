@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gazza</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root {
     --ink: #14151d; --panel: #1c1e29; --line: #2c3040;
@@ -95,6 +96,11 @@
   progress { width: 100%; height: 7px; margin-top: 1rem; accent-color: var(--iris); }
   .warn { color: var(--bad); font-size: .88rem; margin-top: .8rem; }
   .note { color: var(--dim); font-size: .85rem; margin: .6rem 0 0; }
+  .limits {
+    margin-top: 1.2rem; padding: .7rem .9rem; border: 1px solid var(--line);
+    border-radius: 10px; color: var(--dim); font-size: .82rem; line-height: 1.5;
+  }
+  .limits b { color: var(--text); font-weight: 600; }
   a.part {
     display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .85rem;
     background: #232634; border: 1px solid var(--line); border-radius: 10px;
@@ -221,6 +227,7 @@
   </fieldset>
 
   <p class="warn" id="offline" hidden></p>
+  <p class="limits" id="limitsEncode" hidden></p>
 
   <section class="panel" id="preview" hidden>
     <h2>What it will cost</h2>
@@ -266,6 +273,8 @@
         <input type="password" id="password" placeholder="only if it was locked" autocomplete="off">
       </label>
     </fieldset>
+
+    <p class="limits" id="limitsDecode" hidden></p>
 
     <button id="goDecode">Fetch it back</button>
     <progress id="barDecode" hidden></progress>
@@ -405,6 +414,36 @@ function mood(state, line) {
 
 const idleLine = 'A magpie hides your files in videos. Feed her something.';
 
+/**
+ * What this particular instance allows. Read from the server rather than
+ * written into the page: a public deployment sets its own ceilings, and a page
+ * that states different ones is worse than a page that states none.
+ */
+let limits = null;
+
+async function loadLimits() {
+  try {
+    limits = await (await fetch('/limits')).json();
+  } catch {
+    return; // The page still works; refresh() reports the outage properly.
+  }
+
+  $('limitsEncode').innerHTML =
+    `This instance takes files up to <b>${humanBytes(limits.maxFile)}</b>, ` +
+    `runs one encode at a time, and deletes carriers nobody collects after ` +
+    `<b>${limits.jobTtlMinutes} minutes</b>.`;
+  $('limitsEncode').hidden = false;
+
+  $('limitsDecode').innerHTML =
+    `Videos up to <b>${humanBytes(limits.maxVideo)}</b> each. ` +
+    (limits.allowUrls
+      ? `Links accepted from <b>${limits.urlHosts.join(', ')}</b>.`
+      : 'Links are not fetched here: download the video and upload the file.');
+  $('limitsDecode').hidden = false;
+
+  refreshUrlField();
+}
+
 
 
 const humanBytes = (n) =>
@@ -490,6 +529,15 @@ async function refresh() {
   $('pChunks').textContent =
     `${e.dataChunks} data + ${e.parityChunks} parity, ${e.payloadSize} B each`;
 
+  if (limits && chosen.size > limits.maxFile) {
+    $('pWarn').textContent =
+      `That file is ${humanBytes(chosen.size)}. This instance takes up to ${humanBytes(limits.maxFile)}.`;
+    $('pWarn').hidden = false;
+    $('preview').hidden = false;
+    $('go').disabled = true;
+    return;
+  }
+
   const over = e.overSizeLimit !== undefined;
   $('pWarn').hidden = !over;
   if (over) {
@@ -549,15 +597,18 @@ $('videos').addEventListener('change', (e) => e.target.files.length && pickCarri
  * where the link would be typed rather than after a failed attempt.
  */
 function refreshUrlField() {
-  const fetchable = $('platformDecode').value !== 'googlephotos';
+  const fetchable = $('platformDecode').value !== 'googlephotos' && limits?.allowUrls !== false;
   $('urls').disabled = !fetchable;
   $('urls').style.opacity = fetchable ? '1' : '.45';
   $('urlsNote').textContent = fetchable
     ? 'Or paste the links, one per line:'
-    : 'Google Photos links cannot be fetched. Download the video from the album and drop it above.';
+    : limits?.allowUrls === false
+      ? 'This instance does not fetch links. Download the video and drop it above.'
+      : 'Google Photos links cannot be fetched. Download the video from the album and drop it above.';
 }
 $('platformDecode').addEventListener('change', refreshUrlField);
 refreshUrlField();
+void loadLimits();
 
 /** Read a newline-delimited JSON response, handing each event to onEvent. */
 async function readEvents(response, onEvent) {
