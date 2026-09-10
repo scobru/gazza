@@ -267,7 +267,7 @@ than it accepts. All of these are environment variables:
 | | default | what it stops |
 | --- | --- | --- |
 | `GAZZA_MAX_FILE` | 8 MB | a file read into memory without a ceiling |
-| `GAZZA_MAX_VIDEO` | 256 MB | the same on the decode side |
+| `GAZZA_MAX_VIDEO` | 256 MB | the same on the decode side, streamed to disk |
 | `GAZZA_MAX_QUEUE` | 4 | requests piling up behind one another |
 | `GAZZA_JOB_TTL_MS` | 30 min | carriers nobody collected filling the disk |
 | `GAZZA_ALLOW_URLS` | off | **the important one** - see below |

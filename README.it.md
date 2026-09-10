@@ -275,7 +275,7 @@ rifiuta più di quanto accetti. Tutte variabili d'ambiente:
 | | default | cosa impedisce |
 | --- | --- | --- |
 | `GAZZA_MAX_FILE` | 8 MB | un file letto in memoria senza tetto |
-| `GAZZA_MAX_VIDEO` | 256 MB | lo stesso dal lato decodifica |
+| `GAZZA_MAX_VIDEO` | 256 MB | lo stesso dal lato decodifica, scritto su disco |
 | `GAZZA_MAX_QUEUE` | 4 | richieste che si accumulano una sull'altra |
 | `GAZZA_JOB_TTL_MS` | 30 min | carrier mai ritirati che riempiono il disco |
 | `GAZZA_ALLOW_URLS` | spento | **quella che conta** — vedi sotto |

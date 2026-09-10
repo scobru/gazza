@@ -1,4 +1,4 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -47,6 +47,7 @@ const PAGE = join(__dirname, '..', 'src', 'index.html');
  * would fetch whatever URL it was handed - including the host's own network.
  */
 const MAX_FILE = Number(process.env.GAZZA_MAX_FILE ?? 8 * 1024 * 1024);
+/** Streamed to disk, so this is a size limit and not a memory one. */
 const MAX_VIDEO = Number(process.env.GAZZA_MAX_VIDEO ?? 256 * 1024 * 1024);
 const MAX_QUEUE = Number(process.env.GAZZA_MAX_QUEUE ?? 4);
 const JOB_TTL_MS = Number(process.env.GAZZA_JOB_TTL_MS ?? 30 * 60 * 1000);
@@ -195,6 +196,53 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
       resolve(Buffer.concat(parts));
     });
     req.on('error', reject);
+  });
+}
+
+/**
+ * Write an upload to disk as it arrives.
+ *
+ * A carrier is tens of megabytes; reading one into a Buffer first made every
+ * upload cost that much RAM at once, and a couple of concurrent ones could take
+ * the process down on a small host. Over the limit it stops writing and deletes
+ * what it wrote, but keeps consuming the request: hanging up here would take
+ * the socket down before the refusal could be sent.
+ */
+function streamToFile(req: IncomingMessage, path: string, limit: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const out = createWriteStream(path);
+    let size = 0;
+    let over = false;
+
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (over) return;
+      if (size > limit) {
+        over = true;
+        out.destroy();
+        void rm(path, { force: true });
+        return;
+      }
+      out.write(chunk);
+    });
+
+    req.on('error', reject);
+    out.on('error', (error) => {
+      if (!over) reject(error);
+    });
+
+    req.on('end', () => {
+      if (over) {
+        reject(
+          Object.assign(
+            new Error(`That is larger than ${Math.round(limit / 1048576)} MB, which is as much as this instance accepts.`),
+            { status: 413 }
+          )
+        );
+        return;
+      }
+      out.end(() => resolve());
+    });
   });
 }
 
@@ -402,7 +450,7 @@ const server = createServer(async (req, res) => {
       const job = jobs.get(url.searchParams.get('job') ?? '');
       if (!job) return json(res, 404, { error: 'Unknown decode job' });
       const path = join(job.directory, `part-${job.files.length}.mp4`);
-      await writeFile(path, await readBody(req, MAX_VIDEO));
+      await streamToFile(req, path, MAX_VIDEO);
       job.files.push(path);
       return json(res, 200, { files: job.files.length });
     }
