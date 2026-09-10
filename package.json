@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @gazza/core && npm run build -w @gazza/cli && npm run build -w @gazza/web",
     "test": "npm run test --workspaces --if-present",
     "web:dev": "npm run dev --workspace=@gazza/web",
     "cli": "node packages/cli/dist/index.js"
