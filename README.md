@@ -258,6 +258,9 @@ caprover deploy
 
 ### Running it where anyone can reach it
 
+`.env.example` lists every setting with what it is for, and the defaults are
+the safe posture: copy the lines you want rather than all of them.
+
 A public instance is a video encoder handed to strangers, so it refuses more
 than it accepts. All of these are environment variables:
 

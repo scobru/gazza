@@ -266,6 +266,9 @@ caprover deploy
 
 ### Farla girare dove la raggiunge chiunque
 
+`.env.example` elenca tutte le impostazioni con il loro scopo, e i default sono
+già la postura sicura: copia le righe che ti servono, non tutte.
+
 Un'istanza pubblica è un codificatore video messo in mano a sconosciuti, quindi
 rifiuta più di quanto accetti. Tutte variabili d'ambiente:
 
