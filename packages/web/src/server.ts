@@ -359,7 +359,7 @@ async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL)
       send({ phase: 'fetch', completed: i, total: urls.length });
       const into = join(job.directory, `url-${i}`);
       await mkdir(into, { recursive: true });
-      job.files.push(await downloadVideo(source, into));
+      job.files.push(await downloadVideo(source, into, undefined, undefined, MAX_VIDEO));
     }
     if (job.files.length === 0) throw new Error('No video to decode: add a link or a file');
 

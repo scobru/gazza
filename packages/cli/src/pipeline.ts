@@ -152,7 +152,8 @@ export function downloadVideo(
   url: string,
   directory: string,
   browser?: string,
-  format?: string
+  format?: string,
+  maxBytes?: number
 ): Promise<string> {
   const unfetchable = UNFETCHABLE.find((entry) => entry.pattern.test(url));
   if (unfetchable) {
@@ -172,6 +173,9 @@ export function downloadVideo(
         '-f', format ?? 'bv*/b',
         ...(format ? [] : ['-S', 'res,br']),
         ...(browser ? ['--cookies-from-browser', browser] : []),
+        // Without a ceiling a link to a ten hour recording fills the disk. The
+        // caller chooses the URL, so the caller must not choose the size.
+        ...(maxBytes ? ['--max-filesize', String(maxBytes)] : []),
         '-o', join(directory, 'carrier.%(ext)s'),
         url,
       ],
@@ -188,7 +192,15 @@ export function downloadVideo(
         return reject(new Error(`yt-dlp exited ${code}${hint}`));
       }
       const files = await readdir(directory);
-      if (files.length === 0) return reject(new Error('yt-dlp downloaded nothing'));
+      if (files.length === 0) {
+        return reject(
+          new Error(
+            maxBytes
+              ? `Nothing was downloaded. The video may be larger than the ${Math.round(maxBytes / 1048576)} MB this instance accepts.`
+              : 'yt-dlp downloaded nothing'
+          )
+        );
+      }
       resolve(join(directory, files[0]));
     });
   });
