@@ -27,8 +27,16 @@ const PORT = Number(process.env.PORT ?? 4321);
  * carrying the Dockerfile's environment through - so the container detects
  * itself instead. HOST still overrides both.
  */
-const inContainer = existsSync('/.dockerenv') || process.env.CAPROVER_GIT_COMMIT_SHA !== undefined;
-const HOST = process.env.HOST ?? (inContainer ? '0.0.0.0' : '127.0.0.1');
+function containerSignal(): string | undefined {
+  if (existsSync('/.dockerenv')) return '/.dockerenv';
+  // The CMD of a container is PID 1. Nothing on a workstation runs node as PID 1.
+  if (process.pid === 1) return 'pid 1';
+  if (process.env.CAPROVER_GIT_COMMIT_SHA) return 'caprover';
+  return undefined;
+}
+
+const signal = containerSignal();
+const HOST = process.env.HOST ?? (signal ? '0.0.0.0' : '127.0.0.1');
 const PAGE = join(__dirname, '..', 'src', 'index.html');
 
 /**
@@ -324,10 +332,21 @@ const server = createServer(async (req, res) => {
   }
 });
 
-// Loopback only. This serves file contents and shells out to ffmpeg; it has no
-// business being reachable from the network.
-server.listen(PORT, '127.0.0.1', () => {
-  process.stdout.write(`gazza is awake on http://127.0.0.1:${PORT}\n`);
+server.listen(PORT, HOST, () => {
+  // Say why this address was chosen. Without it a wrong bind is
+  // indistinguishable from an old build still running, and the proxy in front
+  // says only 502.
+  const why = process.env.HOST ? 'HOST was set'
+    : signal ? 'container detected via ' + signal
+    : 'no container detected';
+  process.stdout.write(`gazza is awake on http://${HOST}:${PORT} (${why})\n`);
+
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+    process.stdout.write(
+      'listening beyond loopback: anyone who can reach this can spend your CPU ' +
+        'on ffmpeg and read what it decodes. Put authentication in front of it.\n'
+    );
+  }
 });
 
 const cleanup = async () => {
