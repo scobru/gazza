@@ -72,6 +72,7 @@ certi schemi di perdita con la parità lì presente.
 | WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per fotogramma | nessuno | identico |
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per fotogramma | 9 su 280 | fallito, con celle da 12 px |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per fotogramma | nessuno | identico, con celle da 16 px |
+| YouTube | 1920x1080 h264, 2.1 Mbps | 0.0 per fotogramma | nessuno | identico, payload cifrato |
 | Instagram | 720x1280 h264, 6.9 Mbps | 0.0 per fotogramma | nessuno | identico |
 | Google Photos | risparmio spazio | non misurate | nessuno | identico, con celle da 16 px |
 
@@ -98,7 +99,9 @@ Rimisurato contro AV1 a 4 Mbps:
 
 Da qui i 16 px su YouTube, al 45% della capacità. Un secondo caricamento vero a
 16 px è tornato byte per byte: 1104 fotogrammi, tutti leggibili, nessuna
-correzione, parità mai servita.
+correzione, parità mai servita. Un terzo, cifrato e servito a 2.1 Mbps, ha fatto
+lo stesso — il bitrate più basso che YouTube abbia restituito finora, e la
+correzione d'errore non ha comunque avuto niente da fare.
 
 **Un codec non è un bitrate.** Misurare contro quello sbagliato ha gonfiato il
 profilo di oltre il doppio.
@@ -285,13 +288,14 @@ rifiuta più di quanto accetti. Tutte variabili d'ambiente:
 Una sola codifica per volta: ffmpeg è legato alla CPU e farne girare diverse non
 le finisce prima, esaurisce solo i core.
 
-**Lo scaricamento da link è spento di default e conviene lasciarlo spento.**
-Un link significa che questo server fa una richiesta scelta da chi chiama, e da
-dentro un container quella richiesta raggiunge cose che non avevi in mente: le
-app vicine per nome, l'endpoint dei metadati del provider, tutta la rete
-privata. Attivandolo, resta limitato agli host che possono plausibilmente
-ospitare un carrier, con confronto sul punto così che `evil-youtube.com` non
-passi per `youtube.com`.
+**Lo scaricamento da link è spento di default**, ma accenderlo è una decisione
+sulla banda che regali, non una scommessa. Un link significa che questo server
+fa una richiesta scelta da chi chiama, e due cose la limitano: l'host dev'essere
+fra quelli di `GAZZA_URL_HOSTS`, con confronto sul punto così che
+`evil-youtube.com` non passi per `youtube.com`, e lo scaricamento è tagliato a
+`GAZZA_MAX_VIDEO`, perché altrimenti un link a una registrazione di dieci ore
+riempirebbe il disco. Né la rete privata né spazio illimitato sono raggiungibili
+da lì.
 
 **Leggi qui prima di esporla.** Il server ascolta su loopback quando gira su
 una macchina normale e su tutte le interfacce dentro un container, cosa che

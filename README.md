@@ -70,6 +70,7 @@ parity sitting right there.
 | WhatsApp | 848x478 h264, 7.0 Mbps | 0.4 per frame | none | identical |
 | YouTube | 1920x1080 av1, 4.0 Mbps | 6.8 per frame | 9 of 280 | failed, at 12 px cells |
 | YouTube | 1920x1080 h264, 3.2 Mbps | 0.0 per frame | none | identical, at 16 px cells |
+| YouTube | 1920x1080 h264, 2.1 Mbps | 0.0 per frame | none | identical, sealed payload |
 | Instagram | 720x1280 h264, 6.9 Mbps | 0.0 per frame | none | identical |
 | Google Photos | storage saver | not measured | none | identical, at 16 px cells |
 
@@ -95,7 +96,9 @@ Re-measured against AV1 at 4 Mbps:
 
 Hence 16 px on YouTube, at 45% of the capacity. A second real upload at 16 px
 came back byte for byte: 1104 frames, all readable, no corrections, parity never
-needed.
+needed. A third, this one sealed and served at 2.1 Mbps, did the same - the
+lowest bitrate YouTube has handed back so far, and the error correction still
+had nothing to do.
 
 **A codec is not a bitrate.** Measuring against the wrong one flattered the
 profile by more than a factor of two.
@@ -277,12 +280,13 @@ than it accepts. All of these are environment variables:
 Only one encode runs at a time: ffmpeg is CPU-bound and running several does
 not finish them sooner, it just runs the machine out of cores.
 
-**Fetching links is off by default and should stay off unless you mean it.**
-A link means this server makes a request of the caller's choosing, and from
-inside a container that reaches things you did not intend: sibling apps by
-name, the provider's metadata endpoint, anything on the private network.
-Turning it on limits it to hosts that plausibly hold a carrier, matched on a
-dot boundary so `evil-youtube.com` is not `youtube.com`.
+**Fetching links is off by default**, and turning it on is a decision about
+bandwidth rather than a gamble. A link means this server makes a request of the
+caller's choosing, so two things bound it: the host has to be one of
+`GAZZA_URL_HOSTS`, matched on a dot boundary so `evil-youtube.com` is not
+`youtube.com`, and the download is capped at `GAZZA_MAX_VIDEO`, because
+otherwise a link to a ten hour recording would fill the disk. Neither the
+private network nor unbounded storage is reachable through it.
 
 **Read this before exposing it.** The server binds loopback on a workstation
 and every interface inside a container, which it detects for itself; `HOST`
