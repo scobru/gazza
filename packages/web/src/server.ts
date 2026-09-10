@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -19,12 +19,16 @@ import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '
 const PORT = Number(process.env.PORT ?? 4321);
 
 /**
- * Loopback unless told otherwise. This reads files and shells out to ffmpeg, so
- * exposing it means handing strangers a video encoder; a container has to opt
- * in with HOST=0.0.0.0, and then it is the operator's job to put something in
- * front of it.
+ * Loopback on a workstation, every interface inside a container.
+ *
+ * Binding loopback in a container means nothing outside it can connect, which
+ * is how this first met a 502 from the proxy in front. Relying on the image to
+ * set HOST turned out to be fragile - a platform can start a container without
+ * carrying the Dockerfile's environment through - so the container detects
+ * itself instead. HOST still overrides both.
  */
-const HOST = process.env.HOST ?? '127.0.0.1';
+const inContainer = existsSync('/.dockerenv') || process.env.CAPROVER_GIT_COMMIT_SHA !== undefined;
+const HOST = process.env.HOST ?? (inContainer ? '0.0.0.0' : '127.0.0.1');
 const PAGE = join(__dirname, '..', 'src', 'index.html');
 
 /**

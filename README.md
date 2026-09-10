@@ -256,8 +256,9 @@ at the same Dockerfile:
 caprover deploy
 ```
 
-**Read this before exposing it.** The server binds loopback unless `HOST` says
-otherwise, and the compose file publishes it on `127.0.0.1` only. That is
+**Read this before exposing it.** The server binds loopback on a workstation
+and every interface inside a container, which it detects for itself; `HOST`
+overrides both. The compose file publishes it on `127.0.0.1` only. That is
 deliberate: whoever reaches gazza can spend your CPU on ffmpeg and read whatever
 they decode through her. Put authentication in front - CapRover's basic auth is
 enough - before letting anyone else near it. She will say so in her own logs if

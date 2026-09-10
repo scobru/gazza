@@ -19,6 +19,9 @@ COPY packages ./packages
 RUN npm run build && npm prune --omit=dev
 
 # The page is served from src, not dist: it is not compiled, only read.
+# HOST is also detected at runtime, so this is a default and not the only way
+# it reaches the process: some platforms start a container without carrying the
+# image's environment through.
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=4321

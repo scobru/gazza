@@ -264,8 +264,10 @@ allo stesso Dockerfile:
 caprover deploy
 ```
 
-**Leggi qui prima di esporla.** Il server ascolta su loopback a meno che `HOST`
-non dica altro, e il compose la pubblica solo su `127.0.0.1`. È voluto: chi
+**Leggi qui prima di esporla.** Il server ascolta su loopback quando gira su
+una macchina normale e su tutte le interfacce dentro un container, cosa che
+riconosce da solo; `HOST` ha comunque la precedenza. Il compose la pubblica solo
+su `127.0.0.1`. È voluto: chi
 raggiunge gazza può spendere la tua CPU in ffmpeg e leggere qualsiasi cosa
 decodifichi. Mettici davanti un'autenticazione — quella base di CapRover basta —
 prima di farla raggiungere da altri. Se la esponi oltre il loopback te lo scrive
