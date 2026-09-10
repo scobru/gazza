@@ -179,17 +179,35 @@ export function downloadVideo(
         '-o', join(directory, 'carrier.%(ext)s'),
         url,
       ],
-      { stdio: ['ignore', 'inherit', 'inherit'] }
+      { stdio: ['ignore', 'inherit', 'pipe'] }
     );
+
+    let complaint = '';
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      complaint += chunk;
+      if (complaint.length > 4096) complaint = complaint.slice(-4096);
+    });
+
     proc.on('error', (err) =>
       reject(new Error(`Could not run yt-dlp (${err.message}). Is it installed and on PATH?`))
     );
     proc.on('close', async (code) => {
       if (code !== 0) {
+        // A server's address gets asked to prove it is a person far more often
+        // than a laptop's does, and the answer is not to try harder from here.
+        if (/not a bot|Sign in to confirm/i.test(complaint)) {
+          return reject(
+            new Error(
+              'YouTube refused this request as automated. That is common from a hosted ' +
+                'address: download the video yourself and upload the file instead.'
+            )
+          );
+        }
         const hint = format
           ? `. Format "${format}" may not exist for this video - list them with: yt-dlp -F "${url}"`
           : '';
-        return reject(new Error(`yt-dlp exited ${code}${hint}`));
+        const tail = complaint.trim().split('\n').pop() ?? '';
+        return reject(new Error(`yt-dlp exited ${code}${hint}${tail ? ': ' + tail : ''}`));
       }
       const files = await readdir(directory);
       if (files.length === 0) {

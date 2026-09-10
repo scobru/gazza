@@ -170,6 +170,10 @@ function estimate(profile: VideoProfile, fileSize: number, fileName: string, spl
   };
 }
 
+/** Sizes people can read: a 256 KB limit rounded to MB is "0 MB". */
+const humanSize = (bytes: number): string =>
+  bytes >= 1048576 ? `${Math.round(bytes / 1048576)} MB` : `${Math.round(bytes / 1024)} KB`;
+
 const json = (res: ServerResponse, status: number, body: unknown) => {
   const payload = JSON.stringify(body);
   res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) });
@@ -197,7 +201,7 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
       if (over) {
         reject(
           Object.assign(
-            new Error(`That is larger than ${Math.round(limit / 1048576)} MB, which is as much as this instance accepts.`),
+            new Error(`That is larger than ${humanSize(limit)}, which is as much as this instance accepts.`),
             { status: 413 }
           )
         );
@@ -245,7 +249,7 @@ function streamToFile(req: IncomingMessage, path: string, limit: number): Promis
       if (over) {
         reject(
           Object.assign(
-            new Error(`That is larger than ${Math.round(limit / 1048576)} MB, which is as much as this instance accepts.`),
+            new Error(`That is larger than ${humanSize(limit)}, which is as much as this instance accepts.`),
             { status: 413 }
           )
         );
@@ -538,8 +542,8 @@ server.listen(PORT, HOST, () => {
 
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write(
-      `reachable beyond loopback. files <= ${Math.round(MAX_FILE / 1048576)} MB, ` +
-        `videos <= ${Math.round(MAX_VIDEO / 1048576)} MB, one encode at a time, ` +
+      `reachable beyond loopback. files <= ${humanSize(MAX_FILE)}, ` +
+        `videos <= ${humanSize(MAX_VIDEO)}, one encode at a time, ` +
         `temporaries swept after ${Math.round(JOB_TTL_MS / 60000)} min, ` +
         `links ${ALLOW_URLS ? 'allowed from ' + URL_HOSTS.join('/') : 'refused'}, ` +
         `token ${TOKEN ? 'required' : 'not set'}.\n`
