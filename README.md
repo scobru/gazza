@@ -26,7 +26,7 @@ README says so.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per second of video | portrait, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video, not as a document |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per second of video | send as video; heavy size limits |
-| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per second of video | storage saver; download the file, links do not work |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per second of video | storage saver |
 
 YouTube costs the most per byte because it is the only one that re-encodes to
 AV1, which needs bigger cells. The others keep a generous bitrate for the
@@ -126,7 +126,7 @@ run, roughly how large it will be and how many chunks it takes *before* encoding
 anything. If the result would exceed what a platform accepts per video, it says
 so and offers to split rather than letting you find out after the upload.
 
-**Decode.** Paste the links, one per line, or drop the carrier videos - several
+**Decode.** Drop the carrier videos - several
 parts at once is fine. If the first attempt finds no grid it retries looking for
 one inside the frame, which covers a screen recording or a platform that
 letterboxed the upload. A sealed carrier asks for its password.
@@ -142,18 +142,13 @@ log in the way. Encoding asks for it twice: a typo cannot be undone later.
 
 ```bash
 gazza encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
-gazza decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
-gazza inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
+gazza decode  <video>...         [--out file] [--platform ...] [--crop auto|w:h:x:y]
+gazza inspect <video>            [--platform ...] [--crop auto|w:h:x:y]
 ```
 
 Encode and decode must use the same platform profile (default: `youtube`). The
 original file name and MIME type travel inside the chunks, so `decode` with no
 output path restores the name.
-
-`decode` and `inspect` accept URLs and fetch them with `yt-dlp`, taking the
-highest resolution stream and then the highest bitrate. Add `--cookies-from-browser firefox`
-when YouTube refuses an anonymous request, which it does for unlisted videos and
-under rate limiting. `--stream <id>` forces one specific format.
 
 ### Encryption
 
@@ -232,7 +227,7 @@ correction brings it back.
 
 Wait for the full resolution version to finish processing before reading it
 back. Immediately after an upload only a downscaled rendition exists, and the
-cells do not survive it - `yt-dlp -F <url>` shows what is ready.
+cells do not survive it.
 
 On Instagram, post a **Reel**, not a feed video: the feed crops to 4:5 while
 Reels keep the full 9:16. Post from a public account, or reading it back needs
@@ -245,7 +240,7 @@ enforces tight size limits on video anyway. Use `--split` there.
 
 ## Running it as a container
 
-`ffmpeg`, `ffprobe` and `yt-dlp` are all in the image, so nothing has to be
+`ffmpeg` and `ffprobe` are both in the image, so nothing has to be
 installed on the host.
 
 ```bash
@@ -273,20 +268,10 @@ than it accepts. All of these are environment variables:
 | `GAZZA_MAX_VIDEO` | 256 MB | the same on the decode side, streamed to disk |
 | `GAZZA_MAX_QUEUE` | 4 | requests piling up behind one another |
 | `GAZZA_JOB_TTL_MS` | 30 min | carriers nobody collected filling the disk |
-| `GAZZA_ALLOW_URLS` | off | **the important one** - see below |
-| `GAZZA_URL_HOSTS` | youtube, youtu.be, instagram | where a link may point |
 | `GAZZA_TOKEN` | unset | anyone using it at all |
 
 Only one encode runs at a time: ffmpeg is CPU-bound and running several does
 not finish them sooner, it just runs the machine out of cores.
-
-**Fetching links is off by default**, and turning it on is a decision about
-bandwidth rather than a gamble. A link means this server makes a request of the
-caller's choosing, so two things bound it: the host has to be one of
-`GAZZA_URL_HOSTS`, matched on a dot boundary so `evil-youtube.com` is not
-`youtube.com`, and the download is capped at `GAZZA_MAX_VIDEO`, because
-otherwise a link to a ten hour recording would fill the disk. Neither the
-private network nor unbounded storage is reachable through it.
 
 **Read this before exposing it.** The server binds loopback on a workstation
 and every interface inside a container, which it detects for itself; `HOST`
@@ -305,35 +290,33 @@ kept out of the disk.
 
 Vercel and friends cannot host this. The request and response bodies are capped
 around 4.5 MB while gazza moves tens of megabytes per operation; a 400 KB file
-takes about 40 seconds of x264, against a 60 second function limit; and ffmpeg,
-ffprobe and yt-dlp are not there to begin with. A container is the right shape
+takes about 40 seconds of x264, against a 60 second function limit; and ffmpeg
+and ffprobe are not there to begin with. A container is the right shape
 for it.
 
 ## Requirements
 
-Node 22 or newer, and two programs that are not npm packages: **ffmpeg** (with
-ffprobe, which ships with it) for everything, and **yt-dlp** to read from a URL.
-`npm install` does not bring them - gazza has no runtime dependencies at all,
-it spawns these.
+Node 22 or newer, and **ffmpeg** (with ffprobe, which ships with it), which is
+not an npm package. `npm install` does not bring it - gazza has no runtime
+dependencies at all, it spawns it.
 
 ```bash
 # Debian, Ubuntu
-sudo apt install ffmpeg && sudo apt install yt-dlp     # or: pipx install yt-dlp
+sudo apt install ffmpeg
 
 # Alpine
-apk add ffmpeg yt-dlp
+apk add ffmpeg
 
 # macOS
-brew install ffmpeg yt-dlp
+brew install ffmpeg
 
 # Windows
-winget install Gyan.FFmpeg yt-dlp.yt-dlp
+winget install Gyan.FFmpeg
 ```
 
-Without ffmpeg nothing encodes or decodes. Without yt-dlp only links stop
-working; files still do. The web interface reports which are present when it
-starts, and says so on the page rather than waiting for you to upload something
-first. The container image carries all three, so none of this applies there.
+Without ffmpeg nothing encodes or decodes. The web interface reports at start
+whether it is present, rather than waiting for you to upload something first.
+The container image carries it, so none of this applies there.
 
 ```bash
 npm install && npm run build && npm test
@@ -356,9 +339,8 @@ packages/web/   server.ts    loopback server, estimates and progress
 
 ## Limits
 
-- **Google Photos cannot be read back from a link.** There is no yt-dlp
-  extractor for it, so the video has to be downloaded from the album by hand and
-  passed as a file. The round trip itself works: 1662 frames, none unreadable,
+- **Google Photos round trip.** Download the video from the album by hand and
+  pass it as a file. It works: 1662 frames, none unreadable,
   parity never needed. Its cell size was inherited from YouTube rather than
   measured for it, so the margin is unknown, only sufficient.
 - **The 16 px YouTube profile has not made a full AV1 round trip.** It comes

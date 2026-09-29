@@ -27,7 +27,7 @@ questo file lo dice.
 | `instagram` | 1080x1920 | 2031 B | ~30 KB per secondo di video | verticale, 90 s per post |
 | `telegram` | 1920x1080 | 2011 B | ~29 KB per secondo di video | manda come video, non come documento |
 | `whatsapp` | 1920x1080 | 2011 B | ~29 KB per secondo di video | come video; limiti di dimensione stretti |
-| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per secondo di video | risparmio spazio; scarica il file, i link non funzionano |
+| `googlephotos` | 1920x1080 | 1114 B | ~16 KB per secondo di video | risparmio spazio |
 
 YouTube costa di più per byte perché è l'unico che ricomprime in AV1, e l'AV1
 richiede celle più grandi. Gli altri tengono un bitrate generoso per la
@@ -129,7 +129,7 @@ di codificare qualsiasi cosa. Se il risultato supera quello che una piattaforma
 accetta per video, lo dice e propone di spezzarlo invece di lasciartelo scoprire
 dopo il caricamento.
 
-**Decode.** Incolli i link, uno per riga, oppure trascini i video — anche più
+**Decode.** Trascini i video — anche più
 parti insieme. Se il primo tentativo non trova la griglia, riprova cercandola
 dentro il fotogramma: copre una registrazione dello schermo o una piattaforma
 che ha aggiunto bande nere. Un carrier cifrato chiede la password.
@@ -146,19 +146,13 @@ qualsiasi log lungo il percorso. In codifica la chiede due volte: un refuso non
 
 ```bash
 gazza encode  <file> <out.mp4>   [--platform ...] [--encrypt] [--split 60] [--crf 14]
-gazza decode  <video|url>...     [--out file] [--platform ...] [--crop auto|w:h:x:y]
-gazza inspect <video|url>        [--platform ...] [--crop auto|w:h:x:y]
+gazza decode  <video>...         [--out file] [--platform ...] [--crop auto|w:h:x:y]
+gazza inspect <video>            [--platform ...] [--crop auto|w:h:x:y]
 ```
 
 Codifica e decodifica devono usare lo stesso profilo di piattaforma (default:
 `youtube`). Il nome originale del file e il tipo MIME viaggiano dentro i chunk,
 quindi `decode` senza percorso di uscita ripristina il nome.
-
-`decode` e `inspect` accettano URL e li scaricano con `yt-dlp`, prendendo lo
-stream a risoluzione più alta e poi a bitrate più alto. Aggiungi
-`--cookies-from-browser firefox` quando YouTube rifiuta una richiesta anonima,
-cosa che fa per i video non elencati e sotto limitazione di frequenza.
-`--stream <id>` forza un formato specifico.
 
 ### Cifratura
 
@@ -240,7 +234,7 @@ d'errore la riporta indietro.
 
 Aspetta che la versione a piena risoluzione finisca l'elaborazione prima di
 rileggerla. Subito dopo un caricamento esiste solo una versione ridotta, e le
-celle non le sopravvivono — `yt-dlp -F <url>` mostra cosa è pronto.
+celle non le sopravvivono.
 
 Su Instagram pubblica un **Reel**, non un video nel feed: il feed ritaglia a 4:5
 mentre i Reel mantengono il 9:16 pieno. Pubblica da un account pubblico, o per
@@ -253,7 +247,7 @@ impone comunque limiti stretti sui video. Lì usa `--split`.
 
 ## Farla girare in un container
 
-`ffmpeg`, `ffprobe` e `yt-dlp` sono tutti dentro l'immagine, quindi sull'host non
+`ffmpeg` e `ffprobe` sono dentro l'immagine, quindi sull'host non
 va installato niente.
 
 ```bash
@@ -281,21 +275,10 @@ rifiuta più di quanto accetti. Tutte variabili d'ambiente:
 | `GAZZA_MAX_VIDEO` | 256 MB | lo stesso dal lato decodifica, scritto su disco |
 | `GAZZA_MAX_QUEUE` | 4 | richieste che si accumulano una sull'altra |
 | `GAZZA_JOB_TTL_MS` | 30 min | carrier mai ritirati che riempiono il disco |
-| `GAZZA_ALLOW_URLS` | spento | **quella che conta** — vedi sotto |
-| `GAZZA_URL_HOSTS` | youtube, youtu.be, instagram | dove può puntare un link |
 | `GAZZA_TOKEN` | non impostato | che la usi chiunque |
 
 Una sola codifica per volta: ffmpeg è legato alla CPU e farne girare diverse non
 le finisce prima, esaurisce solo i core.
-
-**Lo scaricamento da link è spento di default**, ma accenderlo è una decisione
-sulla banda che regali, non una scommessa. Un link significa che questo server
-fa una richiesta scelta da chi chiama, e due cose la limitano: l'host dev'essere
-fra quelli di `GAZZA_URL_HOSTS`, con confronto sul punto così che
-`evil-youtube.com` non passi per `youtube.com`, e lo scaricamento è tagliato a
-`GAZZA_MAX_VIDEO`, perché altrimenti un link a una registrazione di dieci ore
-riempirebbe il disco. Né la rete privata né spazio illimitato sono raggiungibili
-da lì.
 
 **Leggi qui prima di esporla.** Il server ascolta su loopback quando gira su
 una macchina normale e su tutte le interfacce dentro un container, cosa che
@@ -316,34 +299,32 @@ download, ed è meglio tenerli fuori dal disco.
 Vercel e simili non possono ospitarla. I corpi di richiesta e risposta sono
 limitati attorno ai 4.5 MB mentre gazza sposta decine di megabyte per
 operazione; un file da 400 KB richiede circa 40 secondi di x264, contro un
-limite di 60 secondi per funzione; e ffmpeg, ffprobe e yt-dlp lì non ci sono
+limite di 60 secondi per funzione; e ffmpeg e ffprobe lì non ci sono
 proprio. Un container è la forma giusta.
 
 ## Requisiti
 
-Node 22 o superiore, e due programmi che non sono pacchetti npm: **ffmpeg**
-(insieme a ffprobe, che arriva con lui) per tutto, e **yt-dlp** per leggere da
-un URL. `npm install` non li porta — gazza non ha nessuna dipendenza a runtime,
-li lancia e basta.
+Node 22 o superiore, e **ffmpeg** (insieme a ffprobe, che arriva con lui), che
+non è un pacchetto npm. `npm install` non lo porta — gazza non ha nessuna
+dipendenza a runtime, lo lancia e basta.
 
 ```bash
 # Debian, Ubuntu
-sudo apt install ffmpeg && sudo apt install yt-dlp     # oppure: pipx install yt-dlp
+sudo apt install ffmpeg
 
 # Alpine
-apk add ffmpeg yt-dlp
+apk add ffmpeg
 
 # macOS
-brew install ffmpeg yt-dlp
+brew install ffmpeg
 
 # Windows
-winget install Gyan.FFmpeg yt-dlp.yt-dlp
+winget install Gyan.FFmpeg
 ```
 
-Senza ffmpeg non si codifica né si decodifica niente. Senza yt-dlp smettono di
-funzionare solo i link, i file no. L'interfaccia web dice all'avvio quali ha
-trovato, e lo scrive sulla pagina invece di aspettare che tu abbia già caricato
-qualcosa. L'immagine del container li porta tutti e tre, quindi lì non serve
+Senza ffmpeg non si codifica né si decodifica niente. L'interfaccia web dice
+all'avvio se c'è, invece di aspettare che tu abbia già caricato qualcosa.
+L'immagine del container lo porta, quindi lì non serve
 niente di tutto questo.
 
 ## Per iniziare
@@ -383,11 +364,10 @@ packages/web/   server.ts    server su loopback, stime e avanzamento
 
 ## Limiti
 
-- **Google Photos non si rilegge da un link.** Non esiste un estrattore yt-dlp,
-  quindi il video va scaricato dall'album a mano e passato come file. Il giro in
-  sé funziona: 1662 fotogrammi, nessuno illeggibile, parità mai servita. La
-  dimensione delle celle è ereditata da YouTube e non misurata per lui, quindi
-  il margine è ignoto, solo sufficiente.
+- **Giro completo su Google Photos.** Il video va scaricato dall'album a mano e
+  passato come file. Funziona: 1662 fotogrammi, nessuno illeggibile, parità mai
+  servita. La dimensione delle celle è ereditata da YouTube e non misurata per
+  lui, quindi il margine è ignoto, solo sufficiente.
 - **Il profilo YouTube a 16 px non ha fatto un giro completo su AV1.** Viene
   dalla riproduzione locale di AV1 a 4 Mbps dopo che un caricamento vero era
   fallito a 12 px; il caricamento riuscito che è seguito è tornato in h264.

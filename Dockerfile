@@ -1,9 +1,9 @@
-# gazza needs three things at runtime that are not JavaScript: ffmpeg to write
-# and read the video, ffprobe to tell what a carrier came back as, and yt-dlp to
-# fetch one from a link. Alpine carries all three.
+# gazza needs two things at runtime that are not JavaScript: ffmpeg to write
+# and read the video, and ffprobe to tell what a carrier came back as. Alpine
+# carries both.
 FROM node:22-alpine
 
-RUN apk add --no-cache ffmpeg yt-dlp
+RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 
