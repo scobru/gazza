@@ -131,6 +131,9 @@ parts at once is fine. If the first attempt finds no grid it retries looking for
 one inside the frame, which covers a screen recording or a platform that
 letterboxed the upload. A sealed carrier asks for its password.
 
+gazza reads local files only: download the video from the platform first, at
+the highest quality it offers, then give it the file.
+
 The server binds to loopback only: it reads file contents and shells out to
 ffmpeg, so it has no business being reachable from the network.
 
