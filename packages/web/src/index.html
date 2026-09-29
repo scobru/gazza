@@ -256,9 +256,6 @@
       <span id="videosHint">or drag them here — several parts at once is fine</span>
     </label>
 
-    <p class="note" id="urlsNote">Or paste the links, one per line:</p>
-    <textarea id="urls" placeholder="https://youtu.be/..."></textarea>
-
     <fieldset>
       <label>Taken from
         <select id="platformDecode">
@@ -441,13 +438,8 @@ async function loadLimits() {
   $('limitsEncode').hidden = false;
 
   $('limitsDecode').innerHTML =
-    `Videos up to <b>${humanBytes(limits.maxVideo)}</b> each. ` +
-    (limits.allowUrls
-      ? `Links accepted from <b>${limits.urlHosts.join(', ')}</b>.`
-      : 'Links are not fetched here: download the video and upload the file.');
+    `Videos up to <b>${humanBytes(limits.maxVideo)}</b> each.`;
   $('limitsDecode').hidden = false;
-
-  refreshUrlField();
 }
 
 
@@ -598,22 +590,6 @@ function pickCarriers(files) {
 
 $('videos').addEventListener('change', (e) => e.target.files.length && pickCarriers(e.target.files));
 
-/**
- * Google Photos has no yt-dlp extractor, so a link there can never work. Say so
- * where the link would be typed rather than after a failed attempt.
- */
-function refreshUrlField() {
-  const fetchable = $('platformDecode').value !== 'googlephotos' && limits?.allowUrls !== false;
-  $('urls').disabled = !fetchable;
-  $('urls').style.opacity = fetchable ? '1' : '.45';
-  $('urlsNote').textContent = fetchable
-    ? 'Or paste the links, one per line:'
-    : limits?.allowUrls === false
-      ? 'This instance does not fetch links. Download the video and drop it above.'
-      : 'Google Photos links cannot be fetched. Download the video from the album and drop it above.';
-}
-$('platformDecode').addEventListener('change', refreshUrlField);
-refreshUrlField();
 void loadLimits();
 
 /** Read a newline-delimited JSON response, handing each event to onEvent. */
@@ -632,8 +608,7 @@ async function readEvents(response, onEvent) {
 }
 
 $('goDecode').addEventListener('click', async () => {
-  const urls = $('urls').value.split('\n').map((u) => u.trim()).filter(Boolean);
-  if (carriers.length === 0 && urls.length === 0) return;
+  if (carriers.length === 0) return;
 
   mood('busy', 'Digging through the frames.');
   $('goDecode').disabled = true;
@@ -651,7 +626,6 @@ $('goDecode').addEventListener('click', async () => {
     }
 
     const query = new URLSearchParams({ job: id, platform: $('platformDecode').value });
-    for (const url of urls) query.append('url', url);
 
     const response = await fetch('/decode?' + query, {
       method: 'POST',

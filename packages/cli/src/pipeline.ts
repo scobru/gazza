@@ -1,6 +1,4 @@
 import { spawn } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import {
   ChunkHeader,
@@ -129,101 +127,6 @@ function ffmpeg(args: string[]) {
   });
   return { proc, done, stderr: () => stderr };
 }
-
-/**
- * Pull the least damaged video-only stream: highest resolution first, then
- * highest bitrate. Audio would only be re-encoded for nothing.
- *
- * No resolution cap. An earlier version preferred height <= 1080, which reads
- * as sensible until the carrier is portrait: Instagram's 720x1280 rendition is
- * 1280 tall, so the cap rejected it and took the 360x640 one instead - a 3x
- * downscale that shrank 12 px cells to 4 px and lost the file. A platform never
- * serves more pixels than were uploaded, so more is always better.
- *
- * The bitrate tiebreak matters on YouTube, which offers the same upload as h264
- * and as AV1: AV1 at a similar bitrate destroys far more of the grid.
- */
-/** Hosts yt-dlp has no extractor for. Better said up front than as its error. */
-const UNFETCHABLE: { pattern: RegExp; host: string }[] = [
-  { pattern: /(^|\.)photos\.google\.com|photos\.app\.goo\.gl/i, host: 'Google Photos' },
-];
-
-export function downloadVideo(
-  url: string,
-  directory: string,
-  browser?: string,
-  format?: string,
-  maxBytes?: number
-): Promise<string> {
-  const unfetchable = UNFETCHABLE.find((entry) => entry.pattern.test(url));
-  if (unfetchable) {
-    return Promise.reject(
-      new Error(
-        `${unfetchable.host} links cannot be fetched: there is no yt-dlp extractor for them. ` +
-          'Download the video from the album and pass the file instead.'
-      )
-    );
-  }
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(
-      'yt-dlp',
-      [
-        '--no-playlist',
-        '-f', format ?? 'bv*/b',
-        ...(format ? [] : ['-S', 'res,br']),
-        ...(browser ? ['--cookies-from-browser', browser] : []),
-        // Without a ceiling a link to a ten hour recording fills the disk. The
-        // caller chooses the URL, so the caller must not choose the size.
-        ...(maxBytes ? ['--max-filesize', String(maxBytes)] : []),
-        '-o', join(directory, 'carrier.%(ext)s'),
-        url,
-      ],
-      { stdio: ['ignore', 'inherit', 'pipe'] }
-    );
-
-    let complaint = '';
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      complaint += chunk;
-      if (complaint.length > 4096) complaint = complaint.slice(-4096);
-    });
-
-    proc.on('error', (err) =>
-      reject(new Error(`Could not run yt-dlp (${err.message}). Is it installed and on PATH?`))
-    );
-    proc.on('close', async (code) => {
-      if (code !== 0) {
-        // A server's address gets asked to prove it is a person far more often
-        // than a laptop's does, and the answer is not to try harder from here.
-        if (/not a bot|Sign in to confirm/i.test(complaint)) {
-          return reject(
-            new Error(
-              'YouTube refused this request as automated. That is common from a hosted ' +
-                'address: download the video yourself and upload the file instead.'
-            )
-          );
-        }
-        const hint = format
-          ? `. Format "${format}" may not exist for this video - list them with: yt-dlp -F "${url}"`
-          : '';
-        const tail = complaint.trim().split('\n').pop() ?? '';
-        return reject(new Error(`yt-dlp exited ${code}${hint}${tail ? ': ' + tail : ''}`));
-      }
-      const files = await readdir(directory);
-      if (files.length === 0) {
-        return reject(
-          new Error(
-            maxBytes
-              ? `Nothing was downloaded. The video may be larger than the ${Math.round(maxBytes / 1048576)} MB this instance accepts.`
-              : 'yt-dlp downloaded nothing'
-          )
-        );
-      }
-      resolve(join(directory, files[0]));
-    });
-  });
-}
-
 
 /** Name part n of a split carrier: carrier.mp4 -> carrier-001.mp4 */
 function partPath(outputPath: string, index: number): string {

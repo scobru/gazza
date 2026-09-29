@@ -113,8 +113,7 @@ export const WHATSAPP_PROFILE: VideoProfile = {
  * the margin is unknown - sufficient, but not characterised.
  *
  * Upload at "storage saver", not "original quality": original quality stores
- * the file untouched and tests nothing. Reading it back needs the file itself;
- * yt-dlp has no extractor for Google Photos links.
+ * the file untouched and tests nothing.
  */
 export const GOOGLE_PHOTOS_PROFILE: VideoProfile = {
   platform: 'googlephotos',

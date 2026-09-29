@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, extname, join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { SEALED_FILE_NAME, SEALED_MIME_TYPE, isSealed, open as unseal, profileFor, seal } from '@gazza/core';
 import {
   decodeVideos,
-  downloadVideo,
   encodeFileToVideo,
   inspectVideo,
   maxPayloadFor,
@@ -29,8 +27,8 @@ const USAGE = `gazza - the magpie that hides your files in video
 
 --platform picks the geometry: youtube, instagram, telegram or whatsapp. Encode
 and decode must use the same one.
-  gazza decode  <video|url>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
-  gazza inspect <video|url>            [--platform ...] [--crop auto|w:h:x:y]
+  gazza decode  <video>... [--out file] [--platform ...] [--crop auto|w:h:x:y]
+  gazza inspect <video>            [--platform ...] [--crop auto|w:h:x:y]
 
 --split <seconds> cuts the carrier into several videos of at most that length,
 named carrier-001.mp4, carrier-002.mp4 and so on. Pass them all back to decode
@@ -42,15 +40,9 @@ terminal, never passed as an argument where the shell history and the process
 list would keep it; set GAZZA_PASSWORD to script it. Decoding a sealed
 carrier asks for it again. Lose the password and the file is gone.
 
---stream <id> forces one yt-dlp format instead of the best rendition, e.g.
---stream 399 to read YouTube's AV1 rendition rather than its h264 one.
-
 --crop auto finds the grid inside a larger frame: a screen recording of a
 player, letterboxing, anything that does not fill the frame edge to edge.
 
-decode and inspect accept a URL and fetch it with yt-dlp. Add
---cookies-from-browser chrome (or edge, firefox) when YouTube refuses an
-anonymous request, which it does for unlisted videos and under rate limiting.
 Default: youtube.
 `;
 
@@ -97,49 +89,10 @@ function askPassword(prompt: string): Promise<string> {
   });
 }
 
-const isUrl = (value: string): boolean => /^https?:\/\//i.test(value);
-
-/** Run `body` on local paths, fetching any URLs into a temp directory first. */
-async function withVideos<T>(
-  sources: string[],
-  browser: string | undefined,
-  format: string | undefined,
-  body: (paths: string[]) => Promise<T>
-): Promise<T> {
-  if (!sources.some(isUrl)) return body(sources);
-
-  const directory = await mkdtemp(join(tmpdir(), 'gazza-'));
-  try {
-    const paths: string[] = [];
-    for (const [i, source] of sources.entries()) {
-      if (!isUrl(source)) {
-        paths.push(source);
-        continue;
-      }
-      const into = join(directory, String(i));
-      await mkdir(into, { recursive: true });
-      paths.push(await downloadVideo(source, into, browser, format));
-    }
-    return await body(paths);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-}
-
-const withVideo = <T,>(
-  source: string,
-  browser: string | undefined,
-  format: string | undefined,
-  body: (path: string) => Promise<T>
-): Promise<T> => withVideos([source], browser, format, (paths) => body(paths[0]));
-
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   const args = positional(rest);
   const profile = profileFor(flag(rest, 'platform') ?? 'youtube');
-  const browser = flag(rest, 'cookies-from-browser');
-  // Force one specific stream, e.g. --stream 399 for YouTube's AV1 rendition.
-  const stream = flag(rest, 'stream');
 
   if (command === 'encode') {
     const [input, output] = args;
@@ -187,13 +140,11 @@ async function main(argv: string[]): Promise<void> {
     const output = explicitOut ?? args[1];
     if (inputs.length === 0) throw new Error(USAGE);
 
-    const result = await withVideos(inputs, browser, stream, (paths) =>
-      decodeVideos(paths, profile, {
-        crop: flag(rest, 'crop'),
-        onProgress: ({ completed, total }) =>
-          process.stderr.write(`\rrecovered chunk ${completed}/${total}`),
-      })
-    );
+    const result = await decodeVideos(inputs, profile, {
+      crop: flag(rest, 'crop'),
+      onProgress: ({ completed, total }) =>
+        process.stderr.write(`\rrecovered chunk ${completed}/${total}`),
+    });
 
     let payload = result.data;
     let name = result.header.fileName;
@@ -219,9 +170,7 @@ async function main(argv: string[]): Promise<void> {
     const [input] = args;
     if (!input) throw new Error(USAGE);
 
-    const r = await withVideo(input, browser, stream, (path) =>
-      inspectVideo(path, profile, { crop: flag(rest, 'crop') })
-    );
+    const r = await inspectVideo(input, profile, { crop: flag(rest, 'crop') });
     const rows: [string, string][] = [];
     if (r.crop) rows.push(['crop', `${r.crop} (grid did not fill the frame)`]);
     if (r.source) {

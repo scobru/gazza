@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,7 @@ import {
   profileFor,
   seal,
 } from '@gazza/core';
-import { decodeVideos, downloadVideo, encodeFileToVideo, payloadSizeFor } from '@gazza/cli/dist/pipeline';
+import { decodeVideos, encodeFileToVideo, payloadSizeFor } from '@gazza/cli/dist/pipeline';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -54,8 +54,7 @@ const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
  * Limits for an instance anyone can reach. Every one of these exists because
  * without it a single request can take the whole thing down: the body was read
  * into memory unbounded, ffmpeg was spawned once per request with no ceiling,
- * finished carriers were deleted only if somebody downloaded them, and yt-dlp
- * would fetch whatever URL it was handed - including the host's own network.
+ * and finished carriers were deleted only if somebody downloaded them.
  */
 const MAX_FILE = Number(process.env.GAZZA_MAX_FILE ?? 8 * 1024 * 1024);
 /** Streamed to disk, so this is a size limit and not a memory one. */
@@ -65,29 +64,6 @@ const JOB_TTL_MS = Number(process.env.GAZZA_JOB_TTL_MS ?? 30 * 60 * 1000);
 
 /** A shared secret, if the operator wants one. Empty means open. */
 const TOKEN = process.env.GAZZA_TOKEN ?? '';
-
-/**
- * Fetching a URL means this server makes a request of the requester's choosing,
- * which reaches everything the container can: sibling apps by name, the
- * provider's metadata endpoint, anything on the private network. So it is off
- * unless asked for, and even then only to hosts that plausibly hold a carrier.
- */
-const ALLOW_URLS = process.env.GAZZA_ALLOW_URLS === '1';
-const URL_HOSTS = (process.env.GAZZA_URL_HOSTS ?? 'youtube.com,youtu.be,instagram.com')
-  .split(',')
-  .map((host) => host.trim().toLowerCase())
-  .filter(Boolean);
-
-function urlIsAllowed(candidate: string): boolean {
-  let host: string;
-  try {
-    host = new URL(candidate).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  // Suffix match on a dot boundary, so evil-youtube.com does not pass as youtube.com.
-  return URL_HOSTS.some((allowed) => host === allowed || host.endsWith('.' + allowed));
-}
 
 /**
  * One ffmpeg at a time. It is CPU-bound and a carrier is minutes of encoding;
@@ -172,7 +148,7 @@ function estimate(profile: VideoProfile, fileSize: number, fileName: string, spl
 }
 
 /**
- * ffmpeg, ffprobe and yt-dlp are programs, not packages: npm install does not
+ * ffmpeg and ffprobe are programs, not packages: npm install does not
  * bring them. Checked once at startup so a missing one is a line in the log
  * rather than a surprise after somebody has already uploaded a file.
  */
@@ -184,7 +160,7 @@ const has = (tool: string, flag = '-version'): boolean => {
   }
 };
 
-const tools = { ffmpeg: has('ffmpeg'), ffprobe: has('ffprobe'), ytdlp: has('yt-dlp', '--version') };
+const tools = { ffmpeg: has('ffmpeg'), ffprobe: has('ffprobe') };
 
 /** Sizes people can read: a 256 KB limit rounded to MB is "0 MB". */
 const humanSize = (bytes: number): string =>
@@ -347,7 +323,7 @@ async function handleEncode(req: IncomingMessage, res: ServerResponse, url: URL)
   }
 }
 
-/** A decode in the making: uploaded parts and fetched URLs land in one directory. */
+/** A decode in the making: uploaded parts land in one directory. */
 const jobs = new Map<string, { directory: string; files: string[]; born: number }>();
 
 async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
@@ -356,32 +332,13 @@ async function handleDecode(req: IncomingMessage, res: ServerResponse, url: URL)
 
   const profile = profileFor(url.searchParams.get('platform') ?? 'youtube');
   const password = passwordOf(req);
-  const urls = url.searchParams.getAll('url').filter(Boolean);
-
-  if (urls.length > 0 && !ALLOW_URLS) {
-    return json(res, 403, {
-      error: 'This instance does not fetch links. Download the video and upload the file instead.',
-    });
-  }
-  const refused = urls.filter((candidate) => !urlIsAllowed(candidate));
-  if (refused.length > 0) {
-    return json(res, 403, {
-      error: `Not a host this instance will fetch from: ${refused.join(', ')}. Allowed: ${URL_HOSTS.join(', ')}.`,
-    });
-  }
 
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
   const send = (event: unknown) => res.write(`${JSON.stringify(event)}
 `);
 
   try {
-    for (const [i, source] of urls.entries()) {
-      send({ phase: 'fetch', completed: i, total: urls.length });
-      const into = join(job.directory, `url-${i}`);
-      await mkdir(into, { recursive: true });
-      job.files.push(await downloadVideo(source, into, undefined, undefined, MAX_VIDEO));
-    }
-    if (job.files.length === 0) throw new Error('No video to decode: add a link or a file');
+    if (job.files.length === 0) throw new Error('No video to decode: add a file');
 
     const read = { crop: undefined as string | undefined, onProgress: (u: { completed: number; total: number }) => send({ phase: 'decode', ...u }) };
     let result;
@@ -465,9 +422,7 @@ const server = createServer(async (req, res) => {
         maxVideo: MAX_VIDEO,
         maxQueue: MAX_QUEUE,
         jobTtlMinutes: Math.round(JOB_TTL_MS / 60000),
-        allowUrls: ALLOW_URLS && tools.ytdlp,
         tools,
-        urlHosts: URL_HOSTS,
         tokenRequired: TOKEN.length > 0,
       });
     }
@@ -557,15 +512,8 @@ server.listen(PORT, HOST, () => {
     : 'no container detected';
   process.stdout.write(`gazza is awake on http://${HOST}:${PORT} (${why})\n`);
 
-  const missing = Object.entries(tools)
-    .filter(([, present]) => !present)
-    .map(([name]) => name);
-  if (missing.includes('ffmpeg') || missing.includes('ffprobe')) {
-    process.stdout.write(
-      `ffmpeg is missing (${missing.join(', ')}): nothing will encode or decode until it is on PATH.\n`
-    );
-  } else if (missing.length > 0) {
-    process.stdout.write(`${missing.join(', ')} missing: links cannot be fetched, files still work.\n`);
+  if (!tools.ffmpeg || !tools.ffprobe) {
+    process.stdout.write('ffmpeg or ffprobe is missing: nothing will encode or decode until it is on PATH.\n');
   }
 
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
@@ -573,7 +521,6 @@ server.listen(PORT, HOST, () => {
       `reachable beyond loopback. files <= ${humanSize(MAX_FILE)}, ` +
         `videos <= ${humanSize(MAX_VIDEO)}, one encode at a time, ` +
         `temporaries swept after ${Math.round(JOB_TTL_MS / 60000)} min, ` +
-        `links ${ALLOW_URLS ? 'allowed from ' + URL_HOSTS.join('/') : 'refused'}, ` +
         `token ${TOKEN ? 'required' : 'not set'}.\n`
     );
   }
