@@ -134,6 +134,9 @@ parti insieme. Se il primo tentativo non trova la griglia, riprova cercandola
 dentro il fotogramma: copre una registrazione dello schermo o una piattaforma
 che ha aggiunto bande nere. Un carrier cifrato chiede la password.
 
+gazza legge solo file locali: scarica prima il video dalla piattaforma, alla
+qualità più alta che offre, poi passagli il file.
+
 Il server ascolta solo su loopback: legge il contenuto dei file e lancia ffmpeg,
 non ha motivo di essere raggiungibile dalla rete.
 
